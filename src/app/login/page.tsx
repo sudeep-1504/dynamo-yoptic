@@ -1,13 +1,16 @@
 "use client";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, CheckCircle2 } from "lucide-react";
+import { Mail, CheckCircle2, AlertTriangle } from "lucide-react";
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const callbackError = searchParams.get("error");
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -41,6 +44,12 @@ export default function LoginPage() {
           <CardDescription>Invited access only — no public sign-up.</CardDescription>
         </CardHeader>
         <CardContent>
+          {callbackError && !sent && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{callbackError}</span>
+            </div>
+          )}
           {sent ? (
             <div className="flex flex-col items-center gap-2 rounded-lg border bg-muted/40 p-6 text-center">
               <CheckCircle2 className="h-8 w-8 text-success" />
@@ -77,5 +86,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
