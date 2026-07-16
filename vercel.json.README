@@ -1,0 +1,10 @@
+Cron cadence note
+=================
+The brief specifies a 10-minute background loop. Vercel's Hobby plan caps cron
+frequency at once per day, so vercel.json ships with "0 0 * * *" so the deploy
+succeeds. On a Pro plan, change the schedule to "*/10 * * * *" for the intended
+10-minute cadence.
+
+The walkthrough does NOT depend on the scheduled loop: the "Run cycle now" button
+(POST /api/cycle/run) invokes the identical decision pipeline on demand, which is
+the intended demo driver per the PRD (P0-11).
