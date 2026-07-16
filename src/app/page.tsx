@@ -50,13 +50,39 @@ export default function PortfolioPage() {
     const res = await fetch("/api/portfolio", { cache: "no-store" });
     const data = await res.json();
     setPf(data);
+    return data as Portfolio;
+  }, []);
+
+  // Auto-refresh: ingest fresh weather (15-min cached, cheap) + run a cycle, so
+  // live data flows without a manual click or waiting on the daily cron. Fires on
+  // mount and every 3 minutes; only when a weather key is configured.
+  const autoRefresh = useCallback(async () => {
+    try {
+      await fetch("/api/refresh", { method: "POST" });
+    } catch {
+      /* non-fatal — the poll below still shows whatever is current */
+    }
   }, []);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
-  }, [load]);
+    // First load tells us whether weather is enabled; if so, kick a refresh.
+    (async () => {
+      const data = await load();
+      if (data?.weather_enabled) {
+        await autoRefresh();
+        await load();
+      }
+    })();
+    const poll = setInterval(load, 8000);
+    const refresh = setInterval(async () => {
+      await autoRefresh();
+      await load();
+    }, 180000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(refresh);
+    };
+  }, [load, autoRefresh]);
 
   async function action(label: string, url: string) {
     setBusy(label);
@@ -68,6 +94,8 @@ export default function PortfolioPage() {
       if (url.includes("cycle")) {
         const changed = (data.decisions || []).filter((d: any) => d.state_changed).length;
         setMsg(`Cycle ran · ${changed} state change(s)`);
+      } else if (url.includes("refresh")) {
+        setMsg(`Fetched live weather · ${data.changes ?? 0} creative change(s)`);
       } else {
         setMsg(`${label} done`);
       }
@@ -126,7 +154,7 @@ export default function PortfolioPage() {
           <button
             disabled={busy != null || !pf.weather_enabled}
             title={pf.weather_enabled ? "" : "Set WEATHERAPI_KEY to enable live fetches"}
-            onClick={() => action("Fetch weather", "/api/ingest/run?force=true")}
+            onClick={() => action("Fetch weather", "/api/refresh?force=true")}
           >
             {busy === "Fetch weather" ? "Fetching…" : "⤓ Fetch live weather"}
           </button>
