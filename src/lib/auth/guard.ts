@@ -40,7 +40,10 @@ export async function getSessionUser(): Promise<{ email: string } | null> {
   return { email: data.user.email };
 }
 
-// A mutation is authorized if it carries the cron secret OR a logged-in user.
+// Auth gate DISABLED for now (see middleware.ts) — mutations are open to anyone.
+// A real session's email is still used for actor-attribution when present;
+// otherwise the actor is recorded as "anonymous" rather than being blocked.
+// Restore the PRD P0-12 invited-user requirement by removing the early return.
 export async function isAuthorized(req: NextRequest): Promise<{
   ok: boolean;
   actor: string | null;
@@ -50,8 +53,8 @@ export async function isAuthorized(req: NextRequest): Promise<{
   try {
     const user = await getSessionUser();
     if (user) return { ok: true, actor: user.email };
-    return { ok: false, actor: null, reason: "no session user" };
-  } catch (e: any) {
-    return { ok: false, actor: null, reason: String(e?.message ?? e) };
+  } catch {
+    // no valid session — fall through to anonymous access below
   }
+  return { ok: true, actor: "anonymous" };
 }
