@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorized } from "@/lib/auth/guard";
 import { noStoreJson } from "@/lib/http/noStore";
+import { sendWelcomeEmail } from "@/lib/email/resend";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -92,7 +93,17 @@ export async function POST(req: NextRequest) {
     });
     if (profileErr) throw profileErr;
 
-    return noStoreJson({ ok: true, user_id: newUserId });
+    // Best-effort welcome email — a plain link to /login, never an auto-login
+    // token. Failure here doesn't fail registration; the admin just relays
+    // the login link and password manually instead.
+    const origin = new URL(req.url).origin;
+    const emailResult = await sendWelcomeEmail({
+      to: email,
+      displayName: display_name,
+      loginUrl: `${origin}/login`,
+    });
+
+    return noStoreJson({ ok: true, user_id: newUserId, email: emailResult });
   } catch (e: any) {
     return noStoreJson({ error: String(e?.message ?? e) }, { status: 500 });
   }

@@ -87,7 +87,11 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast.success(`Created ${email} — share the password with them securely.`);
+      if (data.email?.ok) {
+        toast.success(`Created ${email} — welcome email sent with a login link.`);
+      } else {
+        toast.success(`Created ${email} — share the password with them securely (welcome email not sent: ${data.email?.error ?? "not configured"}).`);
+      }
       setOpen(false);
       setEmail("");
       setPassword("");
