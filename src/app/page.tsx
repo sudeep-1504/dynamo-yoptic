@@ -19,9 +19,10 @@ interface AdvertiserSummary {
 // (e.g. a brand lead/CMO) skips this entirely and lands on their own
 // dashboard directly, since there's nothing else for them to pick between.
 export default function HomePage() {
-  const { profile, loading: profileLoading } = useProfile();
+  const { profile, loading: profileLoading, error: profileError } = useProfile();
   const router = useRouter();
   const [clients, setClients] = useState<AdvertiserSummary[] | null>(null);
+  const [clientsError, setClientsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!profile) return;
@@ -31,8 +32,12 @@ export default function HomePage() {
     }
     if (profile.role === "internal") {
       fetch("/api/clients", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((d) => setClients(d.advertisers ?? []));
+        .then(async (r) => {
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.reason ? `${d.error}: ${d.reason}` : d.error || "failed to load clients");
+          setClients(d.advertisers ?? []);
+        })
+        .catch((e) => setClientsError(String(e.message ?? e)));
     }
   }, [profile, router]);
 
@@ -42,6 +47,28 @@ export default function HomePage() {
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-40 w-full" />
       </div>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <Card className="border-destructive/40">
+        <CardContent className="py-8 text-sm">
+          <p className="font-medium text-destructive">Couldn&apos;t load your profile</p>
+          <p className="mt-1 text-muted-foreground">{profileError}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (clientsError) {
+    return (
+      <Card className="border-destructive/40">
+        <CardContent className="py-8 text-sm">
+          <p className="font-medium text-destructive">Couldn&apos;t load clients</p>
+          <p className="mt-1 text-muted-foreground">{clientsError}</p>
+        </CardContent>
+      </Card>
     );
   }
 
