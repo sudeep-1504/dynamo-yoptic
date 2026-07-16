@@ -1,7 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getLocationDetail } from "@/lib/db/read";
+import { noStoreJson } from "@/lib/http/noStore";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export async function GET(
   _req: NextRequest,
@@ -9,9 +12,9 @@ export async function GET(
 ) {
   try {
     const detail = await getLocationDetail(params.id);
-    if (!detail) return NextResponse.json({ error: "not found" }, { status: 404 });
-    return NextResponse.json(detail);
+    if (!detail) return noStoreJson({ error: "not found" }, { status: 404 });
+    return noStoreJson(detail);
   } catch (e: any) {
-    return NextResponse.json({ error: String(e?.message ?? e) }, { status: 500 });
+    return noStoreJson({ error: String(e?.message ?? e) }, { status: 500 });
   }
 }

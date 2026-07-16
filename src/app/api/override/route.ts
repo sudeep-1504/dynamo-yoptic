@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { isAuthorized } from "@/lib/auth/guard";
 import { getActiveOverrides } from "@/lib/db/read";
+import { noStoreJson } from "@/lib/http/noStore";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 // List active overrides (for the persistent banner).
 export async function GET() {
   try {
     const overrides = await getActiveOverrides();
-    return NextResponse.json({ overrides });
+    return noStoreJson({ overrides });
   } catch (e: any) {
-    return NextResponse.json({ error: String(e?.message ?? e) }, { status: 500 });
+    return noStoreJson({ error: String(e?.message ?? e) }, { status: 500 });
   }
 }
 
