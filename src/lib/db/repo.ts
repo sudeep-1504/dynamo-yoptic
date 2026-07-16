@@ -3,6 +3,7 @@ import {
   ActiveOverride,
   Binding,
   DecisionResult,
+  Predicate,
   SignalSnapshot,
 } from "@/lib/decision/types";
 
@@ -117,11 +118,12 @@ export async function getBindings(campaignId: string): Promise<Binding[]> {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from("bindings")
-    .select("creative_id, predicate, priority, trigger_type, creatives(name, role)")
+    .select("id, creative_id, predicate, priority, trigger_type, creatives(name, role)")
     .eq("campaign_id", campaignId)
     .order("priority", { ascending: false });
   if (error) throw error;
   return (data as any[]).map((b) => ({
+    id: b.id,
     creative_id: b.creative_id,
     creative_name: b.creatives?.name ?? "",
     creative_role: b.creatives?.role ?? "context",
@@ -129,6 +131,90 @@ export async function getBindings(campaignId: string): Promise<Binding[]> {
     priority: b.priority,
     trigger_type: b.trigger_type,
   }));
+}
+
+export interface BindingOverride {
+  binding_id: string;
+  location_id: string;
+  location_name: string;
+  predicate: Predicate;
+}
+
+// Every per-location override for a campaign's bindings, in one query — kept
+// small (a handful of rows at most) and merged in-memory per location rather
+// than re-queried per location.
+export async function getBindingOverrides(campaignId: string): Promise<BindingOverride[]> {
+  const db = supabaseAdmin();
+  const { data, error } = await db
+    .from("binding_overrides")
+    .select("binding_id, location_id, predicate, locations(name), bindings!inner(campaign_id)")
+    .eq("bindings.campaign_id", campaignId);
+  if (error) throw error;
+  return (data as any[]).map((o) => ({
+    binding_id: o.binding_id,
+    location_id: o.location_id,
+    location_name: o.locations?.name ?? "",
+    predicate: o.predicate,
+  }));
+}
+
+// Pure merge: the campaign-wide bindings, with any matching per-location
+// override's predicate substituted in. The engine itself never knows the
+// difference — it just receives whichever Binding[] this produced.
+export function withLocationOverrides(
+  bindings: Binding[],
+  overrides: BindingOverride[],
+  locationId: string
+): Binding[] {
+  return bindings.map((b) => {
+    const ov = overrides.find((o) => o.binding_id === b.id && o.location_id === locationId);
+    return ov ? { ...b, predicate: ov.predicate } : b;
+  });
+}
+
+// Update a binding's campaign-wide (default) threshold value.
+export async function updateBindingThreshold(bindingId: string, value: number): Promise<void> {
+  const db = supabaseAdmin();
+  const { data: existing, error: findErr } = await db
+    .from("bindings")
+    .select("predicate")
+    .eq("id", bindingId)
+    .single();
+  if (findErr) throw findErr;
+  const predicate = { ...(existing.predicate as any), value };
+  const { error } = await db.from("bindings").update({ predicate }).eq("id", bindingId);
+  if (error) throw error;
+}
+
+// Set (or replace) a per-location override for one binding.
+export async function upsertBindingOverride(
+  bindingId: string,
+  locationId: string,
+  value: number
+): Promise<void> {
+  const db = supabaseAdmin();
+  const { data: base, error: findErr } = await db
+    .from("bindings")
+    .select("predicate")
+    .eq("id", bindingId)
+    .single();
+  if (findErr) throw findErr;
+  const predicate = { ...(base.predicate as any), value };
+  const { error } = await db
+    .from("binding_overrides")
+    .upsert({ binding_id: bindingId, location_id: locationId, predicate }, { onConflict: "binding_id,location_id" });
+  if (error) throw error;
+}
+
+// Remove a location's override, reverting it to the campaign-wide default.
+export async function deleteBindingOverride(bindingId: string, locationId: string): Promise<void> {
+  const db = supabaseAdmin();
+  const { error } = await db
+    .from("binding_overrides")
+    .delete()
+    .eq("binding_id", bindingId)
+    .eq("location_id", locationId);
+  if (error) throw error;
 }
 
 // signal_type name -> id, and id -> name.

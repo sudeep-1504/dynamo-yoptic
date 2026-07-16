@@ -12,12 +12,14 @@ import {
   applyState,
   getActiveOverride,
   getAllCampaigns,
+  getBindingOverrides,
   getBindings,
   getCurrentState,
   getLocations,
   getSignalTypeMap,
   getSnapshot,
   logTransition,
+  withLocationOverrides,
 } from "@/lib/db/repo";
 
 export interface LocationDecision {
@@ -39,7 +41,10 @@ export async function runCycle(): Promise<LocationDecision[]> {
   const decisions: LocationDecision[] = [];
 
   for (const campaign of campaigns) {
-    const bindings = await getBindings(campaign.campaign_id);
+    const [bindings, bindingOverrides] = await Promise.all([
+      getBindings(campaign.campaign_id),
+      getBindingOverrides(campaign.campaign_id),
+    ]);
 
     for (const loc of locations) {
       const [snapshot, current, override] = await Promise.all([
@@ -48,10 +53,12 @@ export async function runCycle(): Promise<LocationDecision[]> {
         getActiveOverride(loc.id, campaign.campaign_id),
       ]);
 
+      const effectiveBindings = withLocationOverrides(bindings, bindingOverrides, loc.id);
+
       const result = decide({
         location_id: loc.id,
         campaign_id: campaign.campaign_id,
-        bindings,
+        bindings: effectiveBindings,
         snapshot,
         current_creative_id: current.current_creative_id,
         last_state_change_at: current.last_state_change_at,

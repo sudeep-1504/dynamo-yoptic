@@ -7,12 +7,14 @@ import { decide } from "@/lib/decision/engine";
 import { DecisionResult, SnapshotEntry } from "@/lib/decision/types";
 import {
   getActiveOverride,
+  getBindingOverrides,
   getBindings,
   getCampaignByAdvertiserId,
   getCurrentState,
   getLocationsForCampaign,
   getSignalTypeMap,
   getSnapshot,
+  withLocationOverrides,
 } from "./repo";
 
 export type StatusChip = "Auto" | "Fallback" | "Override" | "Paused";
@@ -62,8 +64,9 @@ function maxAge(snapshot: SnapshotEntry[]): number | null {
 export async function buildPortfolio(advertiserId: string): Promise<PortfolioView | null> {
   const campaign = await getCampaignByAdvertiserId(advertiserId);
   if (!campaign) return null;
-  const [bindings, locations, sig] = await Promise.all([
+  const [bindings, bindingOverrides, locations, sig] = await Promise.all([
     getBindings(campaign.campaign_id),
+    getBindingOverrides(campaign.campaign_id),
     getLocationsForCampaign(campaign.campaign_id),
     getSignalTypeMap(),
   ]);
@@ -78,10 +81,12 @@ export async function buildPortfolio(advertiserId: string): Promise<PortfolioVie
       getActiveOverride(loc.id, campaign.campaign_id),
     ]);
 
+    const effectiveBindings = withLocationOverrides(bindings, bindingOverrides, loc.id);
+
     const result = decide({
       location_id: loc.id,
       campaign_id: campaign.campaign_id,
-      bindings,
+      bindings: effectiveBindings,
       snapshot,
       current_creative_id: current.current_creative_id,
       last_state_change_at: current.last_state_change_at,

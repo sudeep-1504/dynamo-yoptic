@@ -14,6 +14,7 @@ export type Predicate =
   | { type: "always_true" };
 
 export interface Binding {
+  id: string;
   creative_id: string;
   creative_name: string;
   creative_role: "context" | "default";

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useParams } from "next/navigation";
 import { useProfile } from "@/hooks/useProfile";
 import { cn } from "@/lib/utils";
-import { ChevronLeft, LayoutGrid, History as HistoryIcon } from "lucide-react";
+import { ChevronLeft, LayoutGrid, History as HistoryIcon, SlidersHorizontal } from "lucide-react";
 
 // Shared chrome for one tenant's dashboard: the "all clients" breadcrumb
 // (internal users only — a client user never sees the picker, so there's
@@ -21,6 +21,12 @@ export default function ClientDashboardLayout({ children }: { children: React.Re
   const tabs = [
     { href: base, label: "Portfolio", icon: LayoutGrid, active: pathname === base },
     { href: `${base}/history`, label: "History", icon: HistoryIcon, active: pathname.startsWith(`${base}/history`) },
+    {
+      href: `${base}/thresholds`,
+      label: "Thresholds",
+      icon: SlidersHorizontal,
+      active: pathname.startsWith(`${base}/thresholds`),
+    },
   ];
 
   return (
