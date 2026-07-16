@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWeatherProvider } from "@/lib/weather/provider";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { getSignalTypeMap, getSnapshot, getLocations } from "@/lib/db/repo";
+import { buildPortfolio } from "@/lib/db/read";
 
 export const dynamic = "force-dynamic";
 
@@ -79,5 +81,40 @@ export async function GET(req: NextRequest) {
     db = { ok: false, error: String(e?.message ?? e) };
   }
 
-  return NextResponse.json({ build, env, weather, db });
+  // Exercise the EXACT functions buildPortfolio()/runCycle() use, in this same
+  // request, to isolate whether the bug is inside getSnapshot/getSignalTypeMap
+  // themselves or in how the portfolio route orchestrates them.
+  let snapshotProbe: any = { attempted: false };
+  try {
+    const sig = await getSignalTypeMap();
+    const locations = await getLocations();
+    const bangalore = locations.find((l) => l.name === "Bangalore");
+    const snapshot = bangalore ? await getSnapshot(bangalore.id, sig.byId) : null;
+    snapshotProbe = {
+      attempted: true,
+      signal_type_byId_keys: Object.keys(sig.byId),
+      signal_type_byId: sig.byId,
+      bangalore_location_id: bangalore?.id ?? null,
+      snapshot_keys: snapshot ? Object.keys(snapshot) : null,
+      snapshot_raw: snapshot,
+    };
+  } catch (e: any) {
+    snapshotProbe = { attempted: true, error: String(e?.message ?? e) };
+  }
+
+  // Also call buildPortfolio() itself directly (bypassing any route-level
+  // difference) to see if IT reproduces the empty-snapshot bug right here.
+  let portfolioProbe: any = { attempted: false };
+  try {
+    const pf = await buildPortfolio();
+    portfolioProbe = {
+      attempted: true,
+      bangalore_snapshot: pf.locations.find((l) => l.location_name === "Bangalore")
+        ?.signal_snapshot,
+    };
+  } catch (e: any) {
+    portfolioProbe = { attempted: true, error: String(e?.message ?? e) };
+  }
+
+  return NextResponse.json({ build, env, weather, db, snapshotProbe, portfolioProbe });
 }
