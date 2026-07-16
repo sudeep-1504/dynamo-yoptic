@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getActiveOverrides } from "@/lib/db/read";
 import { getCampaignByAdvertiserId } from "@/lib/db/repo";
 import { noStoreJson } from "@/lib/http/noStore";
-import { requireAdvertiserAccess } from "@/lib/auth/scope";
+import { requireAdvertiserAccess, requireAdvertiserWrite } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { advertiser_id, location_id, forced_creative_id, is_paused, expires_at } = body;
     if (!advertiser_id) return noStoreJson({ error: "advertiser_id required" }, { status: 400 });
-    const scope = await requireAdvertiserAccess(req, advertiser_id);
+    const scope = await requireAdvertiserWrite(req, advertiser_id);
     if (!scope.ok) return noStoreJson({ error: "forbidden", reason: scope.reason }, { status: 403 });
     if (!is_paused && !forced_creative_id) {
       return noStoreJson(

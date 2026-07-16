@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Dices } from "lucide-react";
 import { toast } from "sonner";
 
 interface UserRow {
@@ -36,6 +36,11 @@ interface AdvertiserOption {
   advertiser_name: string;
 }
 
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+  return Array.from({ length: 14 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
 export default function AdminUsersPage() {
   const { profile, loading: profileLoading } = useProfile();
   const [users, setUsers] = useState<UserRow[] | null>(null);
@@ -44,8 +49,9 @@ export default function AdminUsersPage() {
   const [busy, setBusy] = useState(false);
 
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [role, setRole] = useState<"internal" | "client">("client");
+  const [userType, setUserType] = useState<"internal" | "client">("client");
   const [advertiserId, setAdvertiserId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -72,17 +78,19 @@ export default function AdminUsersPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           email,
-          role,
+          password,
+          user_type: userType,
           display_name: displayName || undefined,
-          advertiser_id: role === "client" ? advertiserId : undefined,
-          is_admin: role === "internal" ? isAdmin : undefined,
+          advertiser_id: userType === "client" ? advertiserId : undefined,
+          is_admin: isAdmin,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      toast.success(`Invited ${email}`);
+      toast.success(`Created ${email} — share the password with them securely.`);
       setOpen(false);
       setEmail("");
+      setPassword("");
       setDisplayName("");
       setAdvertiserId("");
       setIsAdmin(false);
@@ -122,7 +130,8 @@ export default function AdminUsersPage() {
               <DialogHeader>
                 <DialogTitle>Register a new user</DialogTitle>
                 <DialogDescription>
-                  They&apos;ll receive a magic-link email to sign in — no password to set.
+                  Set their password here and share it with them securely — they sign in
+                  with email + password right away, no confirmation email needed.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -131,12 +140,34 @@ export default function AdminUsersPage() {
                   <Input id="reg-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="reg-password">Password</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="reg-password"
+                      required
+                      minLength={8}
+                      placeholder="At least 8 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      title="Generate a password"
+                      onClick={() => setPassword(generatePassword())}
+                    >
+                      <Dices className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="reg-name">Display name (optional)</Label>
                   <Input id="reg-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Account type</Label>
-                  <Select value={role} onValueChange={(v) => setRole(v as "internal" | "client")}>
+                  <Label>User type</Label>
+                  <Select value={userType} onValueChange={(v) => setUserType(v as "internal" | "client")}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="client">Client (brand lead / operator at one advertiser)</SelectItem>
@@ -144,7 +175,7 @@ export default function AdminUsersPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                {role === "client" && (
+                {userType === "client" && (
                   <div className="space-y-2">
                     <Label>Client</Label>
                     <Select value={advertiserId} onValueChange={setAdvertiserId}>
@@ -157,16 +188,22 @@ export default function AdminUsersPage() {
                     </Select>
                   </div>
                 )}
-                {role === "internal" && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
-                    Grant admin (can register other users)
-                  </label>
-                )}
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
+                  Admin
+                  <span className="text-muted-foreground">
+                    {userType === "internal"
+                      ? "— can register users and act across every client"
+                      : "— can force/pause/inject/release overrides for this client (normal users are view-only)"}
+                  </span>
+                </label>
               </div>
               <DialogFooter>
-                <Button type="submit" disabled={busy || (role === "client" && !advertiserId)}>
-                  {busy ? "Sending invite…" : "Send invite"}
+                <Button
+                  type="submit"
+                  disabled={busy || password.length < 8 || (userType === "client" && !advertiserId)}
+                >
+                  {busy ? "Creating…" : "Create account"}
                 </Button>
               </DialogFooter>
             </form>
@@ -180,7 +217,7 @@ export default function AdminUsersPage() {
             <TableRow>
               <TableHead>Email</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Type</TableHead>
+              <TableHead>User type</TableHead>
               <TableHead>Client</TableHead>
               <TableHead>Registered</TableHead>
             </TableRow>
@@ -197,7 +234,7 @@ export default function AdminUsersPage() {
                   <TableCell>{u.display_name ?? "—"}</TableCell>
                   <TableCell>
                     <Badge variant="outline">
-                      {u.role === "internal" ? (u.is_admin ? "Internal · Admin" : "Internal") : "Client"}
+                      {u.role === "internal" ? "Internal" : "Client"} {u.is_admin ? "· Admin" : "· Normal"}
                     </Badge>
                   </TableCell>
                   <TableCell>{u.advertiser_name ?? "—"}</TableCell>

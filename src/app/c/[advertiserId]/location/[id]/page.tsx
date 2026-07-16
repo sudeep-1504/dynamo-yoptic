@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricInfo, METRIC_EXPLANATIONS } from "@/components/MetricInfo";
-import { ChevronLeft, ArrowRight, Pause, Zap, FlaskConical } from "lucide-react";
+import { useProfile } from "@/hooks/useProfile";
+import { ChevronLeft, ArrowRight, Pause, Zap, FlaskConical, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 interface SnapshotEntry {
@@ -66,6 +67,8 @@ function snapText(snap: SnapshotEntry[]): string {
 
 export default function LocationDetailPage() {
   const { advertiserId, id } = useParams<{ advertiserId: string; id: string }>();
+  const { profile } = useProfile();
+  const canWrite = Boolean(profile?.is_admin);
   const [d, setD] = useState<Detail | null>(null);
   const [busy, setBusy] = useState(false);
   const [forceId, setForceId] = useState("");
@@ -202,13 +205,20 @@ export default function LocationDetailPage() {
         </Card>
       </div>
 
-      {/* Operator controls */}
+      {/* Operator controls — admin only; normal users are view-only */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Operator controls</CardTitle>
+          <CardTitle className="flex items-center gap-1.5 text-sm">
+            Operator controls
+            {!canWrite && (
+              <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                <Lock className="h-3 w-3" /> admin access required
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-2">
-          <Select value={forceId} onValueChange={setForceId}>
+          <Select value={forceId} onValueChange={setForceId} disabled={!canWrite}>
             <SelectTrigger className="w-56"><SelectValue placeholder="Force creative…" /></SelectTrigger>
             <SelectContent>
               {d.creatives.map((c) => (
@@ -219,7 +229,7 @@ export default function LocationDetailPage() {
           <Button
             size="sm"
             variant="secondary"
-            disabled={busy || !forceId}
+            disabled={busy || !forceId || !canWrite}
             onClick={() =>
               post("/api/override", { advertiser_id: advertiserId, location_id: id, forced_creative_id: forceId })
             }
@@ -229,7 +239,7 @@ export default function LocationDetailPage() {
           <Button
             size="sm"
             variant="outline"
-            disabled={busy}
+            disabled={busy || !canWrite}
             onClick={() => post("/api/override", { advertiser_id: advertiserId, location_id: id, is_paused: true })}
           >
             <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause city
@@ -241,6 +251,11 @@ export default function LocationDetailPage() {
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-1.5 text-sm">
             <FlaskConical className="h-3.5 w-3.5" /> Condition injection (demo)
+            {!canWrite && (
+              <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                <Lock className="h-3 w-3" /> admin access required
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-2">
@@ -248,17 +263,19 @@ export default function LocationDetailPage() {
             className="w-36"
             placeholder="precip mm/h"
             value={inj.precip}
+            disabled={!canWrite}
             onChange={(e) => setInj({ ...inj, precip: e.target.value })}
           />
           <Input
             className="w-36"
             placeholder="apparent °C"
             value={inj.temp}
+            disabled={!canWrite}
             onChange={(e) => setInj({ ...inj, temp: e.target.value })}
           />
           <Button
             size="sm"
-            disabled={busy}
+            disabled={busy || !canWrite}
             onClick={() =>
               post("/api/inject", {
                 advertiser_id: advertiserId,
@@ -273,7 +290,7 @@ export default function LocationDetailPage() {
           <Button
             size="sm"
             variant="outline"
-            disabled={busy}
+            disabled={busy || !canWrite}
             title="Inject a failed reading to demo the fail-safe"
             onClick={() => post("/api/inject", { advertiser_id: advertiserId, location_id: id, fail: true })}
           >

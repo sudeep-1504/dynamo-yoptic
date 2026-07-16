@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useProfile } from "@/hooks/useProfile";
 
 interface OverrideRow {
   id: string;
@@ -25,6 +26,8 @@ function advertiserIdFromPath(pathname: string): string | null {
 export function OverrideBanner() {
   const pathname = usePathname();
   const advertiserId = advertiserIdFromPath(pathname);
+  const { profile } = useProfile();
+  const canWrite = Boolean(profile?.is_admin);
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
 
   const load = useCallback(async () => {
@@ -80,7 +83,7 @@ export function OverrideBanner() {
               ? ` · expires ${new Date(o.expires_at).toLocaleTimeString()}`
               : " · no expiry"}
           </span>
-          <Button size="sm" variant="outline" onClick={() => release(o.id)}>
+          <Button size="sm" variant="outline" disabled={!canWrite} onClick={() => release(o.id)}>
             Release
           </Button>
         </div>

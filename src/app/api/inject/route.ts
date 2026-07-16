@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { injectReading } from "@/lib/signals/ingest";
 import { noStoreJson } from "@/lib/http/noStore";
-import { requireAdvertiserAccess } from "@/lib/auth/scope";
+import { requireAdvertiserWrite } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const { advertiser_id, location_id, ...payload } = body;
     if (!advertiser_id) return noStoreJson({ error: "advertiser_id required" }, { status: 400 });
     if (!location_id) return noStoreJson({ error: "location_id required" }, { status: 400 });
-    const scope = await requireAdvertiserAccess(req, advertiser_id);
+    const scope = await requireAdvertiserWrite(req, advertiser_id);
     if (!scope.ok) return noStoreJson({ error: "forbidden", reason: scope.reason }, { status: 403 });
 
     await injectReading(location_id, payload);

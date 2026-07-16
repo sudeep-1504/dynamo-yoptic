@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { noStoreJson } from "@/lib/http/noStore";
-import { requireAdvertiserAccess } from "@/lib/auth/scope";
+import { requireAdvertiserWrite } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (!ov) return noStoreJson({ error: "not found" }, { status: 404 });
 
     const advertiserId = (ov as any).campaigns?.advertiser_id;
-    const scope = await requireAdvertiserAccess(req, advertiserId);
+    const scope = await requireAdvertiserWrite(req, advertiserId);
     if (!scope.ok) return noStoreJson({ error: "forbidden", reason: scope.reason }, { status: 403 });
 
     const { error } = await db

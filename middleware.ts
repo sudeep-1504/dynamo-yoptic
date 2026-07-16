@@ -3,12 +3,11 @@ import { createServerClient } from "@supabase/ssr";
 
 // Access gate (PRD P0-12): every dashboard route and dashboard-facing API
 // requires a logged-in Supabase user. There is no public self-signup — every
-// account is created by an internal admin via /api/admin/users (see that
-// route for the invite flow). Fine-grained authorization (which advertiser a
-// user may see, whether they're an internal admin) happens per-route via
-// src/lib/auth/guard.ts and src/lib/auth/scope.ts — this gate only checks
-// "is there a session at all".
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/consumer"];
+// account (email + password) is created by an internal admin via
+// /api/admin/users. Fine-grained authorization (which advertiser a user may
+// see, whether they're an admin) happens per-route via src/lib/auth/guard.ts
+// and src/lib/auth/scope.ts — this gate only checks "is there a session".
+const PUBLIC_PREFIXES = ["/login", "/api/cron", "/api/consumer"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
