@@ -12,30 +12,46 @@ export function hasCronSecret(req: NextRequest): boolean {
 }
 
 // Dashboard-facing mutations require a logged-in Supabase user (invited allowlist).
+// Throws with a diagnostic message on failure so callers can surface *why* the
+// session wasn't recognized, instead of a bare "unauthorized".
 export async function getSessionUser(): Promise<{ email: string } | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
+  if (!url || !key) throw new Error("Supabase public env vars not set");
   const cookieStore = cookies();
+  const allCookies = cookieStore.getAll();
   const supabase = createServerClient(url, key, {
     cookies: {
-      getAll: () => cookieStore.getAll(),
+      getAll: () => allCookies,
       setAll: () => {},
     },
   });
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.email ? { email: user.email } : null;
+  const { data, error } = await supabase.auth.getUser();
+  if (error) {
+    throw new Error(
+      `getUser failed (${error.message}); request carried ${allCookies.length} cookie(s): [${allCookies.map((c) => c.name).join(", ")}]`
+    );
+  }
+  if (!data.user?.email) {
+    throw new Error(
+      `no session user; request carried ${allCookies.length} cookie(s): [${allCookies.map((c) => c.name).join(", ")}]`
+    );
+  }
+  return { email: data.user.email };
 }
 
 // A mutation is authorized if it carries the cron secret OR a logged-in user.
 export async function isAuthorized(req: NextRequest): Promise<{
   ok: boolean;
   actor: string | null;
+  reason?: string;
 }> {
   if (hasCronSecret(req)) return { ok: true, actor: "system" };
-  const user = await getSessionUser();
-  if (user) return { ok: true, actor: user.email };
-  return { ok: false, actor: null };
+  try {
+    const user = await getSessionUser();
+    if (user) return { ok: true, actor: user.email };
+    return { ok: false, actor: null, reason: "no session user" };
+  } catch (e: any) {
+    return { ok: false, actor: null, reason: String(e?.message ?? e) };
+  }
 }

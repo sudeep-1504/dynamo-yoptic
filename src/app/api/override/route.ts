@@ -20,7 +20,7 @@ export async function GET() {
 // actor is taken from the authenticated user (or "system" for cron secret).
 export async function POST(req: NextRequest) {
   const auth = await isAuthorized(req);
-  if (!auth.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   try {
     const body = await req.json();
     const { location_id, forced_creative_id, is_paused, expires_at } = body;

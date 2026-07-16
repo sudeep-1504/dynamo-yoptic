@@ -90,7 +90,7 @@ export default function PortfolioPage() {
     try {
       const res = await fetch(url, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "failed");
+      if (!res.ok) throw new Error(data.reason ? `${data.error}: ${data.reason}` : data.error || "failed");
       if (url.includes("cycle")) {
         const changed = (data.decisions || []).filter((d: any) => d.state_changed).length;
         setMsg(`Cycle ran · ${changed} state change(s)`);

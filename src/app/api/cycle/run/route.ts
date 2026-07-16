@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // fetch, so an injected condition isn't clobbered before you see the result).
 export async function POST(req: NextRequest) {
   const auth = await isAuthorized(req);
-  if (!auth.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   try {
     const decisions = await runCycle();
     return NextResponse.json({

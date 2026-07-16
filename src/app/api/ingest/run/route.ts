@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 // Fetch live signals for all locations (respects the 15-min cache unless force=true).
 export async function POST(req: NextRequest) {
   const auth = await isAuthorized(req);
-  if (!auth.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   const force = new URL(req.url).searchParams.get("force") === "true";
   try {
     const results = await ingestAll(force);

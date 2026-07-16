@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // button so weather flows without waiting on the daily cron.
 export async function POST(req: NextRequest) {
   const auth = await isAuthorized(req);
-  if (!auth.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   return run(new URL(req.url).searchParams.get("force") === "true");
 }
 

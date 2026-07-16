@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // and breaking on cue. Body: { location_id, precip_now?, apparent_temp?, temp_c?, fail? }
 export async function POST(req: NextRequest) {
   const auth = await isAuthorized(req);
-  if (!auth.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   try {
     const body = await req.json();
     const { location_id, ...payload } = body;

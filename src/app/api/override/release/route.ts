@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 //   { override_id }
 export async function POST(req: NextRequest) {
   const auth = await isAuthorized(req);
-  if (!auth.ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   try {
     const { override_id } = await req.json();
     if (!override_id) {
