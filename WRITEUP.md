@@ -22,6 +22,16 @@ The engine is a pure function — signals and current state in, a winning creati
 
 **3. One weather reading stands in for a whole metro.** A single lat/long per city can be raining in one district and dry in another at the same moment; the centroid reading silently picks a side. Accepted at 4-city scale rather than hidden. At real scale (200+ cities), this needs multiple sample points per large metro, averaged or worst-cased depending on the brand's risk tolerance — itself a design choice worth naming rather than defaulting into.
 
+## Constraints that matter at scale
+
+This build runs 12 line items across 4 cities. The brief's actual scale target — 10,000+ line items, 200+ cities, ~$0.001 per weather call, a $50/day cap, ~15-minute staleness tolerance — isn't built here, but the architecture is checked against it rather than ignored.
+
+The load-bearing choice is BE-5: `signal_readings` are keyed by `(location, signal_type)`, never by line item. A city's weather is one fact regardless of how many creatives or clients target it, so a decision cycle costs one signal lookup per city, not one per line item — 200 cities means 200 lookups whether they carry 12 line items or 10,000. Throughput scales with location count (NFR-3), which is exactly what `ingestAll()`'s per-location loop and the shared TTL cache already do at 4 cities; nothing structural changes at 200.
+
+Cost, at the brief's own numbers: 200 cities polled every 10 minutes (inside the 15-minute tolerance, BE-7) is 200 × 6 × 24 = 28,800 calls/day. At $0.001/call that's ~$28.80/day — under the $50 cap with ~$21/day of headroom. (WeatherAPI.com's actual free/Starter pricing makes the real cost lower still, but the brief's generic $0.001 figure is the more conservative, provider-agnostic case, and the one worth designing the budget guard against.)
+
+$50/day is a ceiling to degrade before, not hit. BE-9's budget guard — widen TTL and cadence as spend nears the cap, never hard-stop — is scoped out of this MVP by the brief's own instruction ("nice-to-have if time allows, not core to grading"), but `signal_readings.provider`/`fetch_status` already give a guard the exact visibility it would need to decide when to slow down; adding it later is additive, not a redesign.
+
 ## Extending to other event/trigger-based signals
 
 The stretch question the domain model is built to answer: what changes to add a cricket-score trigger, a stock-index trigger, an AQI trigger, or a traffic trigger? The honest answer, checked against the actual code rather than asserted: **the decision engine, the freshness gate, dwell, override precedence, the transition log, and every dashboard view need zero changes.** Concretely, here's what adding one looks like — walking through a cricket-match trigger for a beverage brand that wants a celebratory creative when the home team is winning:

@@ -255,7 +255,33 @@ The brief asked us to track them so the system's shape is ready for later, but e
 
 ---
 
-## 5. Making DynaMo Work For Any Kind of Event (Not Just Weather)
+## 5. Does This Actually Work at Real Scale? (10,000+ Ads, 200+ Cities)
+
+Everything above was explained using the small version: 12 ads across 4 cities. But the real DynaMo has to work for something much bigger — over 10,000 ads, spread across 200+ cities. Here's the math, walked through honestly rather than waved away.
+
+**Checking the weather isn't free.** Every time DynaMo asks an outside weather service "what's happening right now in this city?", that costs a tiny bit of money — about $0.001, a tenth of a cent, per check. And there's a hard daily spending ceiling: $50 a day, no matter what.
+
+**Weather doesn't need second-by-second updates.** CoolSip is fine with weather information being up to about 15 minutes old. It changes, but not that fast.
+
+So here's the real question: with 10,000 ads across 200 cities, does DynaMo need to make 10,000 separate weather checks to figure out what to show? **No — and this is the single biggest cost-saving idea in the whole design.**
+
+Look back at the `signal_readings` table in Section 2. A weather reading is saved **per city**, never per ad and never per client. Delhi's weather is one single fact, whether 1 ad or 500 ads are pointed at Delhi. So DynaMo only ever needs to check each city's weather once, no matter how many ads or clients are targeting it.
+
+That means 200 cities need 200 weather checks per round — not 10,000. If DynaMo checks each city every 10 minutes (comfortably inside the 15-minute "still counts as fresh" rule), that comes out to:
+
+- 200 cities × 6 checks an hour × 24 hours = **28,800 checks a day**
+- At $0.001 each, that's **about $28.80 a day**
+- The daily limit is $50 a day
+
+So even at the full 200-city size, this comfortably stays under budget, with roughly $21 a day of room left over — using the brief's own plain, provider-agnostic price. (The actual weather service DynaMo uses turns out to be even cheaper than this at that scale, but the $28.80 number is the one worth trusting, since it doesn't depend on any one company's pricing page staying the same.)
+
+**What if costs ever crept close to the $50 ceiling anyway?** The right move is to slow down gently, not to suddenly break. For example: check the weather a little less often, or stretch the "still counts as fresh" window slightly, before ever refusing to make a decision at all. This kind of safety valve (often called a "budget guard") wasn't built in this version — the brief said it's a nice-to-have, not something graded — but the database already keeps exactly the information a budget guard would need to make that call later: every reading already records which service answered and whether the check succeeded or failed.
+
+**Why doesn't thinking about 10,000 ads cost 10,000 times more work?** Because DynaMo makes its decision **once per city**, not once per ad. Every ad in a city shares that city's same weather reading and the same rules, so DynaMo decides "which one ad wins here" a single time, then updates every ad in that city to match. The amount of thinking DynaMo has to do grows with the number of *cities*, not the number of *ads* — 200 cities means 200 decisions, whether 12 ads or 10,000 ads are spread across them.
+
+---
+
+## 6. Making DynaMo Work For Any Kind of Event (Not Just Weather)
 
 This is the most important design idea in the whole system: **DynaMo's actual decision-making code never once mentions the word "weather."** It only ever asks: "check this named fact, on this field, with this comparison, against this number." Weather just happens to be the first fact we plugged in.
 
@@ -296,7 +322,7 @@ The one piece of real, honest work each time is step 2 — writing that one smal
 
 ---
 
-## 6. Quick Recap — Every Decision, In One Line Each
+## 7. Quick Recap — Every Decision, In One Line Each
 
 - **Database:** Supabase, because it can truly lock the audit trail — Airtable can't.
 - **Weather source:** WeatherAPI.com, because it's the only option that's both free and legally fine for ads.
@@ -309,3 +335,4 @@ The one piece of real, honest work each time is step 2 — writing that one smal
 - **Money fields (bid/budget):** stored for the future, not used in decisions yet.
 - **Human override:** always wins over every automatic rule, no exceptions.
 - **Extensibility:** any new kind of live event needs only one new signal type, one small fetcher, and new rule rows — the decision-making logic, safety checks, diary, and screens never need to change.
+- **Scale (10,000+ ads, 200+ cities):** checking weather per-city instead of per-ad keeps this at 200 checks a round, not 10,000 — about $28.80/day at $0.001/check, under the $50/day cap, with room to spare.
