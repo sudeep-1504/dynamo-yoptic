@@ -48,13 +48,33 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // DB reachability (service role).
+  // DB reachability + actual data state (service role). This reveals WHICH
+  // database this deployment is bound to, by showing its live contents.
   let db: any = { ok: false };
   try {
-    const { count, error } = await supabaseAdmin()
-      .from("line_items")
+    const admin = supabaseAdmin();
+    const [{ count: liCount }, readings, active] = await Promise.all([
+      admin.from("line_items").select("*", { count: "exact", head: true }),
+      admin.from("signal_readings").select("read_at").order("read_at", { ascending: false }).limit(1),
+      admin
+        .from("line_items")
+        .select("state, creatives(name), locations(name)")
+        .eq("state", "active"),
+    ]);
+    const newest = (readings.data as any[])?.[0]?.read_at ?? null;
+    db = {
+      ok: true,
+      line_items: liCount,
+      signal_readings_total: null as number | null,
+      newest_reading: newest,
+      active_creatives: (active.data as any[])?.map(
+        (r) => `${r.locations?.name}: ${r.creatives?.name}`
+      ),
+    };
+    const { count: rc } = await admin
+      .from("signal_readings")
       .select("*", { count: "exact", head: true });
-    db = error ? { ok: false, error: error.message } : { ok: true, line_items: count };
+    db.signal_readings_total = rc;
   } catch (e: any) {
     db = { ok: false, error: String(e?.message ?? e) };
   }
