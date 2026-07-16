@@ -8,9 +8,9 @@ import { DecisionResult, SnapshotEntry } from "@/lib/decision/types";
 import {
   getActiveOverride,
   getBindings,
+  getCampaignByAdvertiserId,
   getCurrentState,
-  getLocations,
-  getPrimaryCampaign,
+  getLocationsForCampaign,
   getSignalTypeMap,
   getSnapshot,
 } from "./repo";
@@ -31,6 +31,8 @@ export interface LocationCard {
 }
 
 export interface PortfolioView {
+  advertiser_id: string;
+  campaign_id: string;
   campaign_name: string;
   advertiser_name: string;
   dwell_minutes: number;
@@ -57,11 +59,12 @@ function maxAge(snapshot: SnapshotEntry[]): number | null {
   return Math.max(...ages);
 }
 
-export async function buildPortfolio(): Promise<PortfolioView> {
-  const campaign = await getPrimaryCampaign();
+export async function buildPortfolio(advertiserId: string): Promise<PortfolioView | null> {
+  const campaign = await getCampaignByAdvertiserId(advertiserId);
+  if (!campaign) return null;
   const [bindings, locations, sig] = await Promise.all([
     getBindings(campaign.campaign_id),
-    getLocations(),
+    getLocationsForCampaign(campaign.campaign_id),
     getSignalTypeMap(),
   ]);
 
@@ -71,7 +74,7 @@ export async function buildPortfolio(): Promise<PortfolioView> {
   for (const loc of locations) {
     const [snapshot, current, override] = await Promise.all([
       getSnapshot(loc.id, sig.byId),
-      getCurrentState(loc.id),
+      getCurrentState(loc.id, campaign.campaign_id),
       getActiveOverride(loc.id, campaign.campaign_id),
     ]);
 
@@ -115,6 +118,8 @@ export async function buildPortfolio(): Promise<PortfolioView> {
   }
 
   return {
+    advertiser_id: campaign.advertiser_id,
+    campaign_id: campaign.campaign_id,
     campaign_name: campaign.campaign_name,
     advertiser_name: campaign.advertiser_name,
     dwell_minutes: campaign.dwell_minutes,
@@ -142,18 +147,20 @@ export interface TransitionRow {
 }
 
 export interface HistoryFilter {
+  campaignId: string;
   locationId?: string;
   source?: string;
   limit?: number;
 }
 
-export async function getHistory(filter: HistoryFilter = {}): Promise<TransitionRow[]> {
+export async function getHistory(filter: HistoryFilter): Promise<TransitionRow[]> {
   const db = supabaseAdmin();
   let q = db
     .from("transitions")
     .select(
       "id, created_at, location_id, decision_source, trigger_type, rule_fired_name, rule_fired_priority, signal_snapshot, staleness_flag, dwell_suppressed, state_changed, from_creative_id, to_creative_id, locations(name), fc:creatives!transitions_from_creative_id_fkey(name), tc:creatives!transitions_to_creative_id_fkey(name)"
     )
+    .eq("campaign_id", filter.campaignId)
     .order("created_at", { ascending: false })
     .limit(filter.limit ?? 50);
   if (filter.locationId) q = q.eq("location_id", filter.locationId);
@@ -191,7 +198,7 @@ export interface ActiveOverrideRow {
   expires_at: string | null;
 }
 
-export async function getActiveOverrides(): Promise<ActiveOverrideRow[]> {
+export async function getActiveOverrides(campaignId: string): Promise<ActiveOverrideRow[]> {
   const db = supabaseAdmin();
   const nowIso = new Date().toISOString();
   const { data, error } = await db
@@ -199,6 +206,7 @@ export async function getActiveOverrides(): Promise<ActiveOverrideRow[]> {
     .select(
       "id, location_id, campaign_id, forced_creative_id, is_paused, actor, created_at, expires_at, locations(name), creatives(name)"
     )
+    .eq("campaign_id", campaignId)
     .is("released_at", null)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -224,13 +232,16 @@ export interface LocationDetail extends LocationCard {
   next_decision_seconds: number | null;
 }
 
-export async function getLocationDetail(locationId: string): Promise<LocationDetail | null> {
-  const portfolio = await buildPortfolio();
+export async function getLocationDetail(
+  advertiserId: string,
+  locationId: string
+): Promise<LocationDetail | null> {
+  const portfolio = await buildPortfolio(advertiserId);
+  if (!portfolio) return null;
   const card = portfolio.locations.find((l) => l.location_id === locationId);
   if (!card) return null;
-  const campaign = await getPrimaryCampaign();
-  const bindings = await getBindings(campaign.campaign_id);
-  const transitions = await getHistory({ locationId, limit: 30 });
+  const bindings = await getBindings(portfolio.campaign_id);
+  const transitions = await getHistory({ campaignId: portfolio.campaign_id, locationId, limit: 30 });
   return {
     ...card,
     creatives: bindings.map((b) => ({

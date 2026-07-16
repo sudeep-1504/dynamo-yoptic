@@ -265,12 +265,34 @@ export function decide(input: DecisionInput): DecisionResult {
     staleness_flag: false,
     dwell_suppressed: false,
     state_changed: winnerChanges,
-    why: predicateWhy(winner),
+    why: predicateWhy(winner, bindings, snapshot),
   };
 }
 
-function predicateWhy(b: Binding): string {
-  if (b.predicate.type === "always_true") return "Default — no context trigger active";
+// Renders the actual reading value alongside its threshold, e.g.
+// "apparent_temp 25.8 (need >= 35)" — so the reason is a concrete comparison,
+// not just the rule's name.
+function describeComparison(b: Binding, snapshot: SignalSnapshot): string {
+  if (b.predicate.type !== "comparison") return "";
   const p = b.predicate;
-  return `${p.field} ${p.op} ${p.value}`;
+  const actual = snapshot[p.signal_type]?.value?.[p.field];
+  const actualStr = typeof actual === "number" ? actual : "no data";
+  return `${p.field} ${actualStr} (need ${p.op} ${p.value})`;
+}
+
+// The default (always_true) binding winning is only ever a MEANINGFUL result
+// because every higher-priority predicate was checked and failed — so its
+// reason names each of those, with the actual value that fell short, rather
+// than the uninformative "no context trigger active". A context binding
+// winning gets the concrete comparison that fired it.
+function predicateWhy(winner: Binding, bindings: Binding[], snapshot: SignalSnapshot): string {
+  if (winner.predicate.type === "always_true") {
+    const others = bindings
+      .filter((b) => b.predicate.type === "comparison")
+      .sort((a, b) => b.priority - a.priority);
+    if (others.length === 0) return "Default — no context rules configured for this campaign";
+    const parts = others.map((b) => describeComparison(b, snapshot));
+    return `No trigger met — ${parts.join("; ")} — showing default creative`;
+  }
+  return `Triggered: ${describeComparison(winner, snapshot)}`;
 }

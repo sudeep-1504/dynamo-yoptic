@@ -7,26 +7,13 @@ export const dynamic = "force-dynamic";
 
 // One-shot "make it live": ingest fresh signals (respecting the 15-min cache, so
 // it's cheap and won't clobber a fresh injection) then run the identical decision
-// pipeline. Used by the dashboard's auto-refresh and the "Fetch live weather"
-// button so weather flows without waiting on the daily cron.
+// pipeline, across every tenant. Used by the dashboard's auto-refresh and the
+// "Fetch live weather" button so weather flows without waiting on the cron.
 export async function POST(req: NextRequest) {
   const auth = await isAuthorized(req);
   if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
-  return run(new URL(req.url).searchParams.get("force") === "true");
-}
-
-// GET variant, gated by ?secret=<CRON_SECRET>, so it can be triggered straight
-// from a browser URL (no login) to prove the pipeline end-to-end and populate data.
-export async function GET(req: NextRequest) {
-  const secret = new URL(req.url).searchParams.get("secret");
-  if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  return run(true);
-}
-
-async function run(force: boolean) {
   try {
+    const force = new URL(req.url).searchParams.get("force") === "true";
     const ingest = await ingestAll(force);
     const decisions = await runCycle();
     return NextResponse.json({

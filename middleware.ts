@@ -1,23 +1,14 @@
-import { NextResponse } from "next/server";
-
-// Auth gate DISABLED for now (debugging session — pages and APIs are fully
-// open). The invited-user gate (PRD P0-12) is preserved below as a comment;
-// restore it by uncommenting the block and deleting the early-return version
-// of `middleware` before sharing this deployment beyond your own testing.
-export function middleware() {
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
-};
-
-/* --- Original invited-user gate (Supabase Auth magic-link allowlist) ---
-
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/consumer", "/api/health", "/api/refresh"];
+// Access gate (PRD P0-12): every dashboard route and dashboard-facing API
+// requires a logged-in Supabase user. There is no public self-signup — every
+// account is created by an internal admin via /api/admin/users (see that
+// route for the invite flow). Fine-grained authorization (which advertiser a
+// user may see, whether they're an internal admin) happens per-route via
+// src/lib/auth/guard.ts and src/lib/auth/scope.ts — this gate only checks
+// "is there a session at all".
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/consumer"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -59,5 +50,3 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
-
---- end original gate --- */

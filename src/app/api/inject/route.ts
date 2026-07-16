@@ -1,23 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { injectReading } from "@/lib/signals/ingest";
-import { isAuthorized } from "@/lib/auth/guard";
+import { noStoreJson } from "@/lib/http/noStore";
+import { requireAdvertiserAccess } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 
 // Condition injection (P0-14): write a fake reading for a location to demo working
-// and breaking on cue. Body: { location_id, precip_now?, apparent_temp?, temp_c?, fail? }
+// and breaking on cue. Signal readings are shared reference data across every
+// tenant at that location (PRD BE-5) — the advertiser_id here is only an
+// access-control check (this operator may act on their own dashboard), not a
+// data partition; the injected reading is visible to any campaign at that
+// location, matching how a real weather reading behaves.
+// Body: { advertiser_id, location_id, precip_now?, apparent_temp?, temp_c?, fail? }
 export async function POST(req: NextRequest) {
-  const auth = await isAuthorized(req);
-  if (!auth.ok) return NextResponse.json({ error: "unauthorized", reason: auth.reason }, { status: 401 });
   try {
     const body = await req.json();
-    const { location_id, ...payload } = body;
-    if (!location_id) {
-      return NextResponse.json({ error: "location_id required" }, { status: 400 });
-    }
+    const { advertiser_id, location_id, ...payload } = body;
+    if (!advertiser_id) return noStoreJson({ error: "advertiser_id required" }, { status: 400 });
+    if (!location_id) return noStoreJson({ error: "location_id required" }, { status: 400 });
+    const scope = await requireAdvertiserAccess(req, advertiser_id);
+    if (!scope.ok) return noStoreJson({ error: "forbidden", reason: scope.reason }, { status: 403 });
+
     await injectReading(location_id, payload);
-    return NextResponse.json({ ok: true, injected: payload });
+    return noStoreJson({ ok: true, injected: payload });
   } catch (e: any) {
-    return NextResponse.json({ error: String(e?.message ?? e) }, { status: 500 });
+    return noStoreJson({ error: String(e?.message ?? e) }, { status: 500 });
   }
 }

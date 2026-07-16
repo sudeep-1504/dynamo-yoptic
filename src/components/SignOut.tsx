@@ -1,6 +1,8 @@
 "use client";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
 
 export function SignOut() {
   const router = useRouter();
@@ -10,8 +12,9 @@ export function SignOut() {
     router.refresh();
   }
   return (
-    <button onClick={signOut} style={{ padding: "4px 10px" }}>
+    <Button variant="outline" size="sm" onClick={signOut}>
+      <LogOut className="mr-1.5 h-3.5 w-3.5" />
       Sign out
-    </button>
+    </Button>
   );
 }

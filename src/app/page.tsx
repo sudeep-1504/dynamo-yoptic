@@ -1,212 +1,93 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useProfile } from "@/hooks/useProfile";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Building2, ArrowRight } from "lucide-react";
 
-interface SnapshotEntry {
-  signal_type: string;
-  value: Record<string, number>;
-  age_minutes: number | null;
-  provider: string | null;
-  fetch_status: string;
-}
-interface LocationCard {
-  location_id: string;
-  location_name: string;
-  current_creative: string | null;
-  status: "Auto" | "Fallback" | "Override" | "Paused";
-  why: string;
-  signal_snapshot: SnapshotEntry[];
-  data_age_minutes: number | null;
-  staleness_flag: boolean;
-  dwell_suppressed: boolean;
-}
-interface Portfolio {
-  campaign_name: string;
+interface AdvertiserSummary {
+  advertiser_id: string;
   advertiser_name: string;
-  counts: { auto: number; fallback: number; override: number; paused: number };
-  locations: LocationCard[];
-  weather_enabled: boolean;
-  error?: string;
+  campaign_id: string | null;
+  campaign_name: string | null;
 }
 
-function signalSummary(snap: SnapshotEntry[]): string {
-  const precip = snap.find((s) => s.signal_type === "weather.precip");
-  const temp = snap.find((s) => s.signal_type === "weather.temp");
-  const parts: string[] = [];
-  if (temp?.value?.apparent_temp != null)
-    parts.push(`${temp.value.temp_c ?? "?"}°C feels ${temp.value.apparent_temp}°C`);
-  if (precip?.value?.precip_now != null)
-    parts.push(`rain ${precip.value.precip_now}mm/h`);
-  if (parts.length === 0) return "no live signal";
-  return parts.join(" · ");
-}
-
-export default function PortfolioPage() {
-  const [pf, setPf] = useState<Portfolio | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const res = await fetch("/api/portfolio", { cache: "no-store" });
-    const data = await res.json();
-    setPf(data);
-    return data as Portfolio;
-  }, []);
-
-  // Auto-refresh: ingest fresh weather (15-min cached, cheap) + run a cycle, so
-  // live data flows without a manual click or waiting on the daily cron. Fires on
-  // mount and every 3 minutes; only when a weather key is configured.
-  const autoRefresh = useCallback(async () => {
-    try {
-      await fetch("/api/refresh", { method: "POST" });
-    } catch {
-      /* non-fatal — the poll below still shows whatever is current */
-    }
-  }, []);
+// Client-agnostic landing: internal (DynaMo team) users see the product with
+// the client hidden behind a click — a picker of tenants. A client-role user
+// (e.g. a brand lead/CMO) skips this entirely and lands on their own
+// dashboard directly, since there's nothing else for them to pick between.
+export default function HomePage() {
+  const { profile, loading: profileLoading } = useProfile();
+  const router = useRouter();
+  const [clients, setClients] = useState<AdvertiserSummary[] | null>(null);
 
   useEffect(() => {
-    // First load tells us whether weather is enabled; if so, kick a refresh.
-    (async () => {
-      const data = await load();
-      if (data?.weather_enabled) {
-        await autoRefresh();
-        await load();
-      }
-    })();
-    const poll = setInterval(load, 8000);
-    const refresh = setInterval(async () => {
-      await autoRefresh();
-      await load();
-    }, 180000);
-    return () => {
-      clearInterval(poll);
-      clearInterval(refresh);
-    };
-  }, [load, autoRefresh]);
-
-  async function action(label: string, url: string) {
-    setBusy(label);
-    setMsg(null);
-    try {
-      const res = await fetch(url, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.reason ? `${data.error}: ${data.reason}` : data.error || "failed");
-      if (url.includes("cycle")) {
-        const changed = (data.decisions || []).filter((d: any) => d.state_changed).length;
-        setMsg(`Cycle ran · ${changed} state change(s)`);
-      } else if (url.includes("refresh")) {
-        setMsg(`Fetched live weather · ${data.changes ?? 0} creative change(s)`);
-      } else {
-        setMsg(`${label} done`);
-      }
-      await load();
-    } catch (e: any) {
-      setMsg(`${label} error: ${e.message}`);
-    } finally {
-      setBusy(null);
+    if (!profile) return;
+    if (profile.role === "client" && profile.advertiser_id) {
+      router.replace(`/c/${profile.advertiser_id}`);
+      return;
     }
-  }
+    if (profile.role === "internal") {
+      fetch("/api/clients", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => setClients(d.advertisers ?? []));
+    }
+  }, [profile, router]);
 
-  if (!pf) return <p className="muted">Loading portfolio…</p>;
-
-  if (pf.error) {
+  if (profileLoading || (profile?.role === "client")) {
     return (
-      <div className="notice">
-        <strong>Backend not fully configured.</strong>
-        <p className="muted">{pf.error}</p>
-        <p className="muted">
-          The most likely cause is a missing <code>SUPABASE_SERVICE_ROLE_KEY</code>.
-        </p>
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-40 w-full" />
       </div>
     );
   }
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 12,
-        }}
-      >
-        <div>
-          <h2 style={{ margin: "8px 0" }}>
-            {pf.advertiser_name} — {pf.campaign_name}
-          </h2>
-          <div className="counts">
-            <span className="chip auto">Auto {pf.counts.auto}</span>
-            <span className="chip fallback">Fallback {pf.counts.fallback}</span>
-            <span className="chip override">Override {pf.counts.override}</span>
-            <span className="chip paused">Paused {pf.counts.paused}</span>
-          </div>
-        </div>
-        <div className="controls">
-          <button
-            className="primary"
-            disabled={busy != null}
-            onClick={() => action("Run cycle", "/api/cycle/run")}
-          >
-            {busy === "Run cycle" ? "Running…" : "▶ Run cycle now"}
-          </button>
-          <button
-            disabled={busy != null || !pf.weather_enabled}
-            title={pf.weather_enabled ? "" : "Set WEATHERAPI_KEY to enable live fetches"}
-            onClick={() => action("Fetch weather", "/api/refresh?force=true")}
-          >
-            {busy === "Fetch weather" ? "Fetching…" : "⤓ Fetch live weather"}
-          </button>
-        </div>
-      </div>
-
-      {!pf.weather_enabled && (
-        <p className="muted" style={{ marginTop: 8 }}>
-          Live weather fetching is off (no <code>WEATHERAPI_KEY</code>). Use condition
-          injection on a location to demo decisions.
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
+        <p className="text-sm text-muted-foreground">
+          Pick a client to open their live decisioning dashboard.
         </p>
-      )}
-      {msg && <p className="muted" style={{ marginTop: 8 }}>{msg}</p>}
-
-      <div className="grid">
-        {pf.locations.map((loc) => (
-          <Link
-            href={`/location/${loc.location_id}`}
-            key={loc.location_id}
-            style={{ color: "inherit" }}
-          >
-            <div className={`card status-${loc.status.toLowerCase()}`}>
-              <h3>
-                {loc.location_name}
-                <span className={`chip ${loc.status.toLowerCase()}`}>{loc.status}</span>
-              </h3>
-              <div className="creative">
-                {loc.status === "Paused" ? "— paused —" : loc.current_creative ?? "—"}
-              </div>
-              <div className="signal">
-                {loc.status === "Fallback" ? (
-                  <span className="stale">weather data unavailable</span>
-                ) : (
-                  signalSummary(loc.signal_snapshot)
-                )}
-              </div>
-              <div className="why">
-                <span className="muted">why:</span> {loc.why}
-              </div>
-              <div className="age">
-                {loc.data_age_minutes == null ? (
-                  <span className="stale">no data yet</span>
-                ) : (
-                  <span className={loc.staleness_flag ? "stale" : ""}>
-                    data {loc.data_age_minutes}m old
-                  </span>
-                )}
-              </div>
-            </div>
-          </Link>
-        ))}
       </div>
+
+      {!clients ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+      ) : clients.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            No clients yet.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {clients.map((c) => (
+            <Link key={c.advertiser_id} href={`/c/${c.advertiser_id}`}>
+              <Card className="group h-full transition-colors hover:border-primary/50 hover:bg-accent/40">
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{c.advertiser_name}</CardTitle>
+                      <CardDescription>{c.campaign_name ?? "No active campaign"}</CardDescription>
+                    </div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </CardHeader>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
