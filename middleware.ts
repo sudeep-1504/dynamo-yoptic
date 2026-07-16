@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 // Access gate: every dashboard route and dashboard-facing API requires a logged-in
 // Supabase user (invited allowlist). Exceptions: the login flow, the auth callback,
 // the cron endpoint (secret-guarded), and the consumer API (for the ad server).
-const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/consumer", "/api/health"];
+const PUBLIC_PREFIXES = ["/login", "/auth/callback", "/api/cron", "/api/consumer", "/api/health", "/api/refresh"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
