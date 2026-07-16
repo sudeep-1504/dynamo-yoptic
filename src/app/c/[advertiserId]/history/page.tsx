@@ -1,13 +1,11 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MetricInfo, METRIC_EXPLANATIONS } from "@/components/MetricInfo";
-import { ChevronLeft } from "lucide-react";
 
 interface SnapshotEntry {
   signal_type: string;
@@ -83,13 +81,6 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-4">
-      <Link
-        href={`/c/${advertiserId}`}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ChevronLeft className="h-3.5 w-3.5" /> Back to portfolio
-      </Link>
-
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Transition history</h1>
         <p className="text-sm text-muted-foreground">

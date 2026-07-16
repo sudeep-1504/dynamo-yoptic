@@ -2,13 +2,12 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useProfile } from "@/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricInfo, METRIC_EXPLANATIONS } from "@/components/MetricInfo";
-import { ChevronLeft, Play, CloudSun, History as HistoryIcon } from "lucide-react";
+import { Play, CloudSun } from "lucide-react";
 import { toast } from "sonner";
 
 interface SnapshotEntry {
@@ -58,7 +57,6 @@ function signalSummary(snap: SnapshotEntry[]): string {
 
 export default function ClientPortfolioPage() {
   const { advertiserId } = useParams<{ advertiserId: string }>();
-  const { profile } = useProfile();
   const [pf, setPf] = useState<Portfolio | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -142,15 +140,6 @@ export default function ClientPortfolioPage() {
 
   return (
     <div>
-      {profile?.role === "internal" && (
-        <Link
-          href="/"
-          className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" /> All clients
-        </Link>
-      )}
-
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -165,11 +154,6 @@ export default function ClientPortfolioPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href={`/c/${advertiserId}/history`}>
-              <HistoryIcon className="mr-1.5 h-3.5 w-3.5" /> History
-            </Link>
-          </Button>
           <Button
             size="sm"
             disabled={busy != null}

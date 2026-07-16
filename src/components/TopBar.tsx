@@ -28,11 +28,6 @@ export function TopBar() {
               <Skeleton className="h-8 w-24" />
             ) : profile ? (
               <>
-                {profile.role === "internal" && (
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href="/">All clients</Link>
-                  </Button>
-                )}
                 {profile.role === "internal" && profile.is_admin && (
                   <Button variant="ghost" size="sm" asChild>
                     <Link href="/admin/users">
