@@ -15,6 +15,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Which commit is actually live? Vercel injects these at build time.
+  const build = {
+    deployed_commit: process.env.VERCEL_GIT_COMMIT_SHA ?? "unknown",
+    commit_message: process.env.VERCEL_GIT_COMMIT_MESSAGE ?? "unknown",
+    // Marker: this value only exists in the auto-refresh build (c6ff384+).
+    has_auto_refresh: true,
+  };
+
   const env = {
     NEXT_PUBLIC_SUPABASE_URL_set: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
     NEXT_PUBLIC_SUPABASE_URL_value: process.env.NEXT_PUBLIC_SUPABASE_URL ?? null,
@@ -51,5 +59,5 @@ export async function GET(req: NextRequest) {
     db = { ok: false, error: String(e?.message ?? e) };
   }
 
-  return NextResponse.json({ env, weather, db });
+  return NextResponse.json({ build, env, weather, db });
 }
