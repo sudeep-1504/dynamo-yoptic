@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useProfile } from "@/hooks/useProfile";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Building2, ArrowRight } from "lucide-react";
+import { Building2, ArrowRight, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CreateCampaignDialog } from "@/components/CreateCampaignDialog";
 
 interface AdvertiserSummary {
   advertiser_id: string;
   advertiser_name: string;
-  campaign_id: string | null;
-  campaign_name: string | null;
+  campaign_count: number;
 }
 
 // Client-agnostic landing: internal (DynaMo team) users see the product with
@@ -23,6 +24,17 @@ export default function HomePage() {
   const router = useRouter();
   const [clients, setClients] = useState<AdvertiserSummary[] | null>(null);
   const [clientsError, setClientsError] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const loadClients = () => {
+    fetch("/api/clients", { cache: "no-store" })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.reason ? `${d.error}: ${d.reason}` : d.error || "failed to load clients");
+        setClients(d.advertisers ?? []);
+      })
+      .catch((e) => setClientsError(String(e.message ?? e)));
+  };
 
   useEffect(() => {
     if (!profile) return;
@@ -31,13 +43,7 @@ export default function HomePage() {
       return;
     }
     if (profile.role === "internal") {
-      fetch("/api/clients", { cache: "no-store" })
-        .then(async (r) => {
-          const d = await r.json();
-          if (!r.ok) throw new Error(d.reason ? `${d.error}: ${d.reason}` : d.error || "failed to load clients");
-          setClients(d.advertisers ?? []);
-        })
-        .catch((e) => setClientsError(String(e.message ?? e)));
+      loadClients();
     }
   }, [profile, router]);
 
@@ -74,11 +80,18 @@ export default function HomePage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
-        <p className="text-sm text-muted-foreground">
-          Pick a client to open their live decisioning dashboard.
-        </p>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
+          <p className="text-sm text-muted-foreground">
+            Pick a client to open their live decisioning dashboard.
+          </p>
+        </div>
+        {profile?.is_admin && (
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add client
+          </Button>
+        )}
       </div>
 
       {!clients ? (
@@ -105,7 +118,11 @@ export default function HomePage() {
                     </div>
                     <div>
                       <CardTitle className="text-base">{c.advertiser_name}</CardTitle>
-                      <CardDescription>{c.campaign_name ?? "No active campaign"}</CardDescription>
+                      <CardDescription>
+                        {c.campaign_count === 0
+                          ? "No campaigns yet"
+                          : `${c.campaign_count} campaign${c.campaign_count > 1 ? "s" : ""}`}
+                      </CardDescription>
                     </div>
                   </div>
                   <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
@@ -115,6 +132,15 @@ export default function HomePage() {
           ))}
         </div>
       )}
+
+      <CreateCampaignDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        mode="new-client"
+        onCreated={(newCampaignId, newAdvertiserId) => {
+          if (newAdvertiserId) router.push(`/c/${newAdvertiserId}/${newCampaignId}`);
+        }}
+      />
     </div>
   );
 }

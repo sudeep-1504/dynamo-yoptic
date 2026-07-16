@@ -66,7 +66,7 @@ function snapText(snap: SnapshotEntry[]): string {
 }
 
 export default function LocationDetailPage() {
-  const { advertiserId, id } = useParams<{ advertiserId: string; id: string }>();
+  const { advertiserId, campaignId, id } = useParams<{ advertiserId: string; campaignId: string; id: string }>();
   const { profile } = useProfile();
   const canWrite = Boolean(profile?.is_admin);
   const [d, setD] = useState<Detail | null>(null);
@@ -75,9 +75,9 @@ export default function LocationDetailPage() {
   const [inj, setInj] = useState({ precip: "", temp: "" });
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/location/${id}?advertiser_id=${advertiserId}`, { cache: "no-store" });
+    const res = await fetch(`/api/location/${id}?campaign_id=${campaignId}`, { cache: "no-store" });
     if (res.ok) setD(await res.json());
-  }, [id, advertiserId]);
+  }, [id, campaignId]);
 
   useEffect(() => {
     load();
@@ -122,7 +122,7 @@ export default function LocationDetailPage() {
   return (
     <div className="space-y-6">
       <Link
-        href={`/c/${advertiserId}`}
+        href={`/c/${advertiserId}/${campaignId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ChevronLeft className="h-3.5 w-3.5" /> Back to portfolio
@@ -231,7 +231,7 @@ export default function LocationDetailPage() {
             variant="secondary"
             disabled={busy || !forceId || !canWrite}
             onClick={() =>
-              post("/api/override", { advertiser_id: advertiserId, location_id: id, forced_creative_id: forceId })
+              post("/api/override", { campaign_id: campaignId, location_id: id, forced_creative_id: forceId })
             }
           >
             <Zap className="mr-1.5 h-3.5 w-3.5" /> Force
@@ -240,7 +240,7 @@ export default function LocationDetailPage() {
             size="sm"
             variant="outline"
             disabled={busy || !canWrite}
-            onClick={() => post("/api/override", { advertiser_id: advertiserId, location_id: id, is_paused: true })}
+            onClick={() => post("/api/override", { campaign_id: campaignId, location_id: id, is_paused: true })}
           >
             <Pause className="mr-1.5 h-3.5 w-3.5" /> Pause city
           </Button>
@@ -278,7 +278,7 @@ export default function LocationDetailPage() {
             disabled={busy || !canWrite}
             onClick={() =>
               post("/api/inject", {
-                advertiser_id: advertiserId,
+                campaign_id: campaignId,
                 location_id: id,
                 ...(inj.precip !== "" ? { precip_now: Number(inj.precip) } : {}),
                 ...(inj.temp !== "" ? { apparent_temp: Number(inj.temp), temp_c: Number(inj.temp) } : {}),
@@ -292,7 +292,7 @@ export default function LocationDetailPage() {
             variant="outline"
             disabled={busy || !canWrite}
             title="Inject a failed reading to demo the fail-safe"
-            onClick={() => post("/api/inject", { advertiser_id: advertiserId, location_id: id, fail: true })}
+            onClick={() => post("/api/inject", { campaign_id: campaignId, location_id: id, fail: true })}
           >
             Inject failure
           </Button>

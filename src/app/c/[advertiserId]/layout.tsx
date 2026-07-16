@@ -1,34 +1,15 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useParams } from "next/navigation";
 import { useProfile } from "@/hooks/useProfile";
-import { cn } from "@/lib/utils";
-import { ChevronLeft, LayoutGrid, History as HistoryIcon, SlidersHorizontal } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 
-// Shared chrome for one tenant's dashboard: the "all clients" breadcrumb
-// (internal users only — a client user never sees the picker, so there's
-// nothing to go "back" to), and the Portfolio/History section tabs. Hidden on
-// a location drill-down page, which has its own "back to portfolio" link
-// instead of competing with the tabs for attention.
-export default function ClientDashboardLayout({ children }: { children: React.ReactNode }) {
-  const { advertiserId } = useParams<{ advertiserId: string }>();
-  const pathname = usePathname();
+// The "all clients" breadcrumb — internal users only (a client user never
+// sees the picker, so there's nothing to go "back" to). Shown across the
+// campaign picker and every campaign's dashboard beneath it. The
+// Portfolio/History/Thresholds tabs live one level deeper, in
+// [campaignId]/layout.tsx, since they're specific to one campaign.
+export default function AdvertiserLayout({ children }: { children: React.ReactNode }) {
   const { profile } = useProfile();
-
-  const base = `/c/${advertiserId}`;
-  const isLocationDrilldown = pathname.startsWith(`${base}/location/`);
-
-  const tabs = [
-    { href: base, label: "Portfolio", icon: LayoutGrid, active: pathname === base },
-    { href: `${base}/history`, label: "History", icon: HistoryIcon, active: pathname.startsWith(`${base}/history`) },
-    {
-      href: `${base}/thresholds`,
-      label: "Thresholds",
-      icon: SlidersHorizontal,
-      active: pathname.startsWith(`${base}/thresholds`),
-    },
-  ];
-
   return (
     <div>
       {profile?.role === "internal" && (
@@ -38,25 +19,6 @@ export default function ClientDashboardLayout({ children }: { children: React.Re
         >
           <ChevronLeft className="h-3.5 w-3.5" /> All clients
         </Link>
-      )}
-      {!isLocationDrilldown && (
-        <nav className="mb-5 flex gap-1 border-b">
-          {tabs.map((t) => (
-            <Link
-              key={t.href}
-              href={t.href}
-              className={cn(
-                "-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm transition-colors",
-                t.active
-                  ? "border-primary font-medium text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <t.icon className="h-3.5 w-3.5" />
-              {t.label}
-            </Link>
-          ))}
-        </nav>
       )}
       {children}
     </div>

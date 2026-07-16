@@ -48,30 +48,30 @@ function snapText(snap: SnapshotEntry[]): string {
 }
 
 export default function HistoryPage() {
-  const { advertiserId } = useParams<{ advertiserId: string }>();
+  const { campaignId } = useParams<{ advertiserId: string; campaignId: string }>();
   const [rows, setRows] = useState<TransitionRow[]>([]);
   const [source, setSource] = useState<string>("all");
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [locationId, setLocationId] = useState<string>("all");
 
   const load = useCallback(async () => {
-    const q = new URLSearchParams({ advertiser_id: advertiserId });
+    const q = new URLSearchParams({ campaign_id: campaignId });
     if (source !== "all") q.set("source", source);
     if (locationId !== "all") q.set("location_id", locationId);
     q.set("limit", "100");
     const res = await fetch(`/api/history?${q.toString()}`, { cache: "no-store" });
     const data = await res.json();
     setRows(data.transitions ?? []);
-  }, [advertiserId, source, locationId]);
+  }, [campaignId, source, locationId]);
 
   useEffect(() => {
-    fetch(`/api/portfolio?advertiser_id=${advertiserId}`, { cache: "no-store" })
+    fetch(`/api/portfolio?campaign_id=${campaignId}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((p) =>
         setLocations((p.locations ?? []).map((l: any) => ({ id: l.location_id, name: l.location_name })))
       )
       .catch(() => {});
-  }, [advertiserId]);
+  }, [campaignId]);
 
   useEffect(() => {
     load();

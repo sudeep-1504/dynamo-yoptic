@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
 import { noStoreJson } from "@/lib/http/noStore";
-import { requireAdvertiserAccess, requireAdvertiserWrite } from "@/lib/auth/scope";
+import { requireCampaignAccess, requireCampaignWrite } from "@/lib/auth/scope";
 import {
   deleteBindingOverride,
   getBindingOverrides,
   getBindings,
-  getCampaignByAdvertiserId,
   getLocationsForCampaign,
   updateBindingThreshold,
   upsertBindingOverride,
@@ -19,19 +18,16 @@ export const fetchCache = "force-no-store";
 // plus every per-location override currently set. Skips the always_true
 // default binding — there's no number to threshold there.
 export async function GET(req: NextRequest) {
-  const advertiserId = new URL(req.url).searchParams.get("advertiser_id");
-  if (!advertiserId) return noStoreJson({ error: "advertiser_id required" }, { status: 400 });
-  const scope = await requireAdvertiserAccess(req, advertiserId);
+  const campaignId = new URL(req.url).searchParams.get("campaign_id");
+  if (!campaignId) return noStoreJson({ error: "campaign_id required" }, { status: 400 });
+  const scope = await requireCampaignAccess(req, campaignId);
   if (!scope.ok) return noStoreJson({ error: "forbidden", reason: scope.reason }, { status: 403 });
 
   try {
-    const campaign = await getCampaignByAdvertiserId(advertiserId);
-    if (!campaign) return noStoreJson({ bindings: [], locations: [] });
-
     const [bindings, overrides, locations] = await Promise.all([
-      getBindings(campaign.campaign_id),
-      getBindingOverrides(campaign.campaign_id),
-      getLocationsForCampaign(campaign.campaign_id),
+      getBindings(campaignId),
+      getBindingOverrides(campaignId),
+      getLocationsForCampaign(campaignId),
     ]);
 
     const thresholdBindings = bindings
@@ -65,18 +61,18 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Set a threshold. Body: { advertiser_id, binding_id, value, location_id? }
+// Set a threshold. Body: { campaign_id, binding_id, value, location_id? }
 // With location_id: sets/replaces that location's override.
 // Without location_id: updates the campaign-wide default.
-// Body: { advertiser_id, binding_id, location_id, remove: true } removes an override.
+// Body: { campaign_id, binding_id, location_id, remove: true } removes an override.
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { advertiser_id, binding_id, value, location_id, remove } = body;
-    if (!advertiser_id || !binding_id) {
-      return noStoreJson({ error: "advertiser_id and binding_id required" }, { status: 400 });
+    const { campaign_id, binding_id, value, location_id, remove } = body;
+    if (!campaign_id || !binding_id) {
+      return noStoreJson({ error: "campaign_id and binding_id required" }, { status: 400 });
     }
-    const scope = await requireAdvertiserWrite(req, advertiser_id);
+    const scope = await requireCampaignWrite(req, campaign_id);
     if (!scope.ok) return noStoreJson({ error: "forbidden", reason: scope.reason }, { status: 403 });
 
     if (remove) {

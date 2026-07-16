@@ -9,7 +9,7 @@ import {
   getActiveOverride,
   getBindingOverrides,
   getBindings,
-  getCampaignByAdvertiserId,
+  getCampaignById,
   getCurrentState,
   getLocationsForCampaign,
   getSignalTypeMap,
@@ -61,8 +61,8 @@ function maxAge(snapshot: SnapshotEntry[]): number | null {
   return Math.max(...ages);
 }
 
-export async function buildPortfolio(advertiserId: string): Promise<PortfolioView | null> {
-  const campaign = await getCampaignByAdvertiserId(advertiserId);
+export async function buildPortfolio(campaignId: string): Promise<PortfolioView | null> {
+  const campaign = await getCampaignById(campaignId);
   if (!campaign) return null;
   const [bindings, bindingOverrides, locations, sig] = await Promise.all([
     getBindings(campaign.campaign_id),
@@ -238,10 +238,10 @@ export interface LocationDetail extends LocationCard {
 }
 
 export async function getLocationDetail(
-  advertiserId: string,
+  campaignId: string,
   locationId: string
 ): Promise<LocationDetail | null> {
-  const portfolio = await buildPortfolio(advertiserId);
+  const portfolio = await buildPortfolio(campaignId);
   if (!portfolio) return null;
   const card = portfolio.locations.find((l) => l.location_id === locationId);
   if (!card) return null;

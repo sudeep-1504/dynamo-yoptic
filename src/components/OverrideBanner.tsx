@@ -15,40 +15,41 @@ interface OverrideRow {
   expires_at: string | null;
 }
 
-// Overrides are tenant-scoped, but this banner is mounted globally in the root
-// layout — so it derives the current advertiser from the URL (/c/[id]/...)
-// and simply renders nothing outside a client dashboard.
-function advertiserIdFromPath(pathname: string): string | null {
-  const m = pathname.match(/^\/c\/([^/]+)/);
+// Overrides are campaign-scoped, but this banner is mounted globally in the
+// root layout — so it derives the current campaign from the URL
+// (/c/[advertiserId]/[campaignId]/...) and renders nothing outside a
+// campaign dashboard (e.g. on the client or campaign picker pages).
+function campaignIdFromPath(pathname: string): string | null {
+  const m = pathname.match(/^\/c\/[^/]+\/([^/]+)/);
   return m ? m[1] : null;
 }
 
 export function OverrideBanner() {
   const pathname = usePathname();
-  const advertiserId = advertiserIdFromPath(pathname);
+  const campaignId = campaignIdFromPath(pathname);
   const { profile } = useProfile();
   const canWrite = Boolean(profile?.is_admin);
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
 
   const load = useCallback(async () => {
-    if (!advertiserId) return;
+    if (!campaignId) return;
     try {
-      const res = await fetch(`/api/override?advertiser_id=${advertiserId}`, { cache: "no-store" });
+      const res = await fetch(`/api/override?campaign_id=${campaignId}`, { cache: "no-store" });
       if (!res.ok) return;
       const data = await res.json();
       setOverrides(data.overrides ?? []);
     } catch {
       /* ignore */
     }
-  }, [advertiserId]);
+  }, [campaignId]);
 
   useEffect(() => {
     setOverrides([]);
-    if (!advertiserId) return;
+    if (!campaignId) return;
     load();
     const t = setInterval(load, 8000);
     return () => clearInterval(t);
-  }, [advertiserId, load]);
+  }, [campaignId, load]);
 
   async function release(id: string) {
     await fetch("/api/override/release", {
@@ -59,7 +60,7 @@ export function OverrideBanner() {
     load();
   }
 
-  if (!advertiserId || overrides.length === 0) return null;
+  if (!campaignId || overrides.length === 0) return null;
   const anyPaused = overrides.some((o) => o.is_paused);
 
   return (

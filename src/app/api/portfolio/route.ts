@@ -1,23 +1,23 @@
 import { NextRequest } from "next/server";
 import { buildPortfolio } from "@/lib/db/read";
 import { noStoreJson } from "@/lib/http/noStore";
-import { requireAdvertiserAccess } from "@/lib/auth/scope";
+import { requireCampaignAccess } from "@/lib/auth/scope";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 // Read API for the portfolio grid (polled by the client for the live glance).
-// Scoped to one tenant: ?advertiser_id=<id>. no-store headers stamped
-// explicitly so no CDN/browser layer ever serves a cached snapshot of live
-// decision state.
+// Scoped to one campaign: ?campaign_id=<id> (a client can run more than one).
+// no-store headers stamped explicitly so no CDN/browser layer ever serves a
+// cached snapshot of live decision state.
 export async function GET(req: NextRequest) {
-  const advertiserId = new URL(req.url).searchParams.get("advertiser_id");
-  if (!advertiserId) return noStoreJson({ error: "advertiser_id required" }, { status: 400 });
-  const scope = await requireAdvertiserAccess(req, advertiserId);
+  const campaignId = new URL(req.url).searchParams.get("campaign_id");
+  if (!campaignId) return noStoreJson({ error: "campaign_id required" }, { status: 400 });
+  const scope = await requireCampaignAccess(req, campaignId);
   if (!scope.ok) return noStoreJson({ error: "forbidden", reason: scope.reason }, { status: 403 });
   try {
-    const portfolio = await buildPortfolio(advertiserId);
+    const portfolio = await buildPortfolio(campaignId);
     if (!portfolio) return noStoreJson({ error: "not found" }, { status: 404 });
     return noStoreJson(portfolio);
   } catch (e: any) {

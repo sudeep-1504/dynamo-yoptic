@@ -1,220 +1,127 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useParams, useRouter } from "next/navigation";
+import { useProfile } from "@/hooks/useProfile";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MetricInfo, METRIC_EXPLANATIONS } from "@/components/MetricInfo";
-import { Play, CloudSun } from "lucide-react";
-import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Megaphone, ArrowRight, Plus } from "lucide-react";
+import { CreateCampaignDialog } from "@/components/CreateCampaignDialog";
 
-interface SnapshotEntry {
-  signal_type: string;
-  value: Record<string, number>;
-  age_minutes: number | null;
-  provider: string | null;
-  fetch_status: string;
-}
-interface LocationCard {
-  location_id: string;
-  location_name: string;
-  current_creative: string | null;
-  status: "Auto" | "Fallback" | "Override" | "Paused";
-  why: string;
-  signal_snapshot: SnapshotEntry[];
-  data_age_minutes: number | null;
-  staleness_flag: boolean;
-  dwell_suppressed: boolean;
-}
-interface Portfolio {
-  advertiser_id: string;
+interface CampaignSummary {
+  campaign_id: string;
   campaign_name: string;
+  advertiser_id: string;
   advertiser_name: string;
-  counts: { auto: number; fallback: number; override: number; paused: number };
-  locations: LocationCard[];
-  weather_enabled: boolean;
-  error?: string;
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  Auto: "bg-success/15 text-success border-success/30",
-  Fallback: "bg-warning/15 text-warning border-warning/30",
-  Override: "bg-primary/15 text-primary border-primary/30",
-  Paused: "bg-muted text-muted-foreground border-border",
-};
-
-function signalSummary(snap: SnapshotEntry[]): string {
-  const precip = snap.find((s) => s.signal_type === "weather.precip");
-  const temp = snap.find((s) => s.signal_type === "weather.temp");
-  const parts: string[] = [];
-  if (temp?.value?.apparent_temp != null)
-    parts.push(`${temp.value.temp_c ?? "?"}°C · feels ${temp.value.apparent_temp}°C`);
-  if (precip?.value?.precip_now != null) parts.push(`rain ${precip.value.precip_now}mm/h`);
-  return parts.length ? parts.join(" · ") : "no live signal";
-}
-
-export default function ClientPortfolioPage() {
+// One client can now run more than one campaign, so this page sits between
+// the client picker and a campaign's dashboard: auto-skips straight through
+// when there's only one campaign (the common case), otherwise shows a picker.
+export default function CampaignPickerPage() {
   const { advertiserId } = useParams<{ advertiserId: string }>();
-  const [pf, setPf] = useState<Portfolio | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const router = useRouter();
+  const { profile } = useProfile();
+  const canWrite = Boolean(profile?.is_admin);
+  const [campaigns, setCampaigns] = useState<CampaignSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [skipping, setSkipping] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/portfolio?advertiser_id=${advertiserId}`, { cache: "no-store" });
+    const res = await fetch(`/api/campaigns?advertiser_id=${advertiserId}`, { cache: "no-store" });
     const data = await res.json();
-    setPf(data);
-    return data as Portfolio;
-  }, [advertiserId]);
-
-  const autoRefresh = useCallback(async () => {
-    try {
-      await fetch("/api/refresh", { method: "POST" });
-    } catch {
-      /* non-fatal */
+    if (!res.ok) {
+      setError(data.reason ? `${data.error}: ${data.reason}` : data.error || "failed to load campaigns");
+      setSkipping(false);
+      return;
     }
-  }, []);
+    setCampaigns(data.campaigns ?? []);
+    if ((data.campaigns ?? []).length === 1) {
+      router.replace(`/c/${advertiserId}/${data.campaigns[0].campaign_id}`);
+    } else {
+      setSkipping(false);
+    }
+  }, [advertiserId, router]);
 
   useEffect(() => {
-    (async () => {
-      const data = await load();
-      if (data?.weather_enabled) {
-        await autoRefresh();
-        await load();
-      }
-    })();
-    const poll = setInterval(load, 8000);
-    const refresh = setInterval(async () => {
-      await autoRefresh();
-      await load();
-    }, 180000);
-    return () => {
-      clearInterval(poll);
-      clearInterval(refresh);
-    };
-  }, [load, autoRefresh]);
+    load();
+  }, [load]);
 
-  async function action(label: string, url: string) {
-    setBusy(label);
-    try {
-      const res = await fetch(url, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.reason ? `${data.error}: ${data.reason}` : data.error || "failed");
-      if (url.includes("cycle")) {
-        const changed = (data.decisions || []).filter((d: any) => d.state_changed).length;
-        toast.success(`Cycle ran · ${changed} change(s)`);
-      } else {
-        toast.success(`Fetched live weather · ${data.changes ?? 0} change(s)`);
-      }
-      await load();
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  if (!pf) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-9 w-72" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-44 w-full" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (pf.error) {
+  if (error) {
     return (
       <Card className="border-destructive/40">
         <CardContent className="py-8 text-sm">
-          <p className="font-medium text-destructive">Couldn&apos;t load this dashboard</p>
-          <p className="mt-1 text-muted-foreground">{pf.error}</p>
+          <p className="font-medium text-destructive">Couldn&apos;t load campaigns</p>
+          <p className="mt-1 text-muted-foreground">{error}</p>
         </CardContent>
       </Card>
     );
   }
 
-  return (
-    <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {pf.advertiser_name} <span className="text-muted-foreground">/ {pf.campaign_name}</span>
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline" className={STATUS_STYLE.Auto}>Auto {pf.counts.auto}</Badge>
-            <Badge variant="outline" className={STATUS_STYLE.Fallback}>Fallback {pf.counts.fallback}</Badge>
-            <Badge variant="outline" className={STATUS_STYLE.Override}>Override {pf.counts.override}</Badge>
-            <Badge variant="outline" className={STATUS_STYLE.Paused}>Paused {pf.counts.paused}</Badge>
-            <MetricInfo text={METRIC_EXPLANATIONS.status} />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            disabled={busy != null}
-            onClick={() => action("cycle", "/api/cycle/run")}
-          >
-            <Play className="mr-1.5 h-3.5 w-3.5" />
-            {busy === "cycle" ? "Running…" : "Run cycle now"}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy != null || !pf.weather_enabled}
-            title={pf.weather_enabled ? "" : "Weather provider not configured"}
-            onClick={() => action("weather", "/api/refresh?force=true")}
-          >
-            <CloudSun className="mr-1.5 h-3.5 w-3.5" />
-            {busy === "weather" ? "Fetching…" : "Fetch live weather"}
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {pf.locations.map((loc) => (
-          <Link href={`/c/${advertiserId}/location/${loc.location_id}`} key={loc.location_id}>
-            <Card className="h-full transition-colors hover:border-primary/40">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <span className="font-medium">{loc.location_name}</span>
-                <Badge variant="outline" className={STATUS_STYLE[loc.status]}>
-                  {loc.status}
-                </Badge>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-0 text-sm">
-                <div className="text-base font-semibold">
-                  {loc.status === "Paused" ? "— paused —" : loc.current_creative ?? "—"}
-                </div>
-                <div className="text-muted-foreground">
-                  {loc.status === "Fallback" ? (
-                    <span className="text-warning">weather data unavailable</span>
-                  ) : (
-                    signalSummary(loc.signal_snapshot)
-                  )}
-                </div>
-                <div className="flex items-start gap-1 text-xs text-muted-foreground">
-                  <span className="line-clamp-2">{loc.why}</span>
-                  <MetricInfo text={METRIC_EXPLANATIONS.why} className="mt-0.5 shrink-0" />
-                </div>
-                <div className="flex items-center gap-1 text-xs">
-                  {loc.data_age_minutes == null ? (
-                    <span className="text-warning">no data yet</span>
-                  ) : (
-                    <span className={loc.staleness_flag ? "text-warning" : "text-muted-foreground"}>
-                      data {loc.data_age_minutes}m old
-                    </span>
-                  )}
-                  <MetricInfo text={METRIC_EXPLANATIONS.dataAge} />
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
+  if (!campaigns || skipping) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {[1, 2].map((i) => (
+          <Skeleton key={i} className="h-32 w-full" />
         ))}
       </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {campaigns[0]?.advertiser_name ?? "Campaigns"}
+          </h1>
+          <p className="text-sm text-muted-foreground">Pick a campaign to open its live decisioning dashboard.</p>
+        </div>
+        {canWrite && (
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add campaign
+          </Button>
+        )}
+      </div>
+
+      {campaigns.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            No campaigns yet for this client.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {campaigns.map((c) => (
+            <Link key={c.campaign_id} href={`/c/${advertiserId}/${c.campaign_id}`}>
+              <Card className="group h-full transition-colors hover:border-primary/50 hover:bg-accent/40">
+                <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                      <Megaphone className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{c.campaign_name}</CardTitle>
+                      <CardDescription>Live decisioning</CardDescription>
+                    </div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                </CardHeader>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <CreateCampaignDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        mode="existing-client"
+        advertiserId={advertiserId}
+        onCreated={(newCampaignId) => router.push(`/c/${advertiserId}/${newCampaignId}`)}
+      />
     </div>
   );
 }

@@ -36,13 +36,13 @@ function BindingCard({
   binding,
   locations,
   canWrite,
-  advertiserId,
+  campaignId,
   onChanged,
 }: {
   binding: BindingRow;
   locations: LocationOption[];
   canWrite: boolean;
-  advertiserId: string;
+  campaignId: string;
   onChanged: () => void;
 }) {
   const [baseValue, setBaseValue] = useState(String(binding.value));
@@ -59,7 +59,7 @@ function BindingCard({
       const res = await fetch("/api/thresholds", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ advertiser_id: advertiserId, binding_id: binding.id, ...body }),
+        body: JSON.stringify({ campaign_id: campaignId, binding_id: binding.id, ...body }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.reason ? `${data.error}: ${data.reason}` : data.error);
@@ -215,20 +215,20 @@ function OverrideRowEditor({
 }
 
 export default function ThresholdsPage() {
-  const { advertiserId } = useParams<{ advertiserId: string }>();
+  const { campaignId } = useParams<{ advertiserId: string; campaignId: string }>();
   const { profile } = useProfile();
   const canWrite = Boolean(profile?.is_admin);
   const [bindings, setBindings] = useState<BindingRow[] | null>(null);
   const [locations, setLocations] = useState<LocationOption[]>([]);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/thresholds?advertiser_id=${advertiserId}`, { cache: "no-store" });
+    const res = await fetch(`/api/thresholds?campaign_id=${campaignId}`, { cache: "no-store" });
     const data = await res.json();
     if (res.ok) {
       setBindings(data.bindings);
       setLocations(data.locations);
     }
-  }, [advertiserId]);
+  }, [campaignId]);
 
   useEffect(() => {
     load();
@@ -261,7 +261,7 @@ export default function ThresholdsPage() {
               binding={b}
               locations={locations}
               canWrite={canWrite}
-              advertiserId={advertiserId}
+              campaignId={campaignId}
               onChanged={load}
             />
           ))}

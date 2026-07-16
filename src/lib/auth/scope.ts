@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { isAuthorized } from "./guard";
+import { getCampaignById } from "@/lib/db/repo";
 
 // Can this request act on/read this advertiser's data? Internal team members
 // see every tenant (client hidden behind a click); a client-role user is
@@ -39,4 +40,28 @@ export async function requireAdvertiserWrite(
     return auth;
   }
   return { ok: false, actor: auth.actor, reason: "not scoped to this advertiser" };
+}
+
+// Campaign-scoped variants: resolve campaign -> advertiser once, then apply
+// the exact same rules as above. A client can run more than one campaign, so
+// routes now key on campaign_id directly rather than assuming "the" campaign
+// for an advertiser.
+export async function requireCampaignAccess(
+  req: NextRequest,
+  campaignId: string
+): Promise<{ ok: boolean; actor: string | null; reason?: string; advertiserId?: string }> {
+  const campaign = await getCampaignById(campaignId);
+  if (!campaign) return { ok: false, actor: null, reason: "campaign not found" };
+  const scope = await requireAdvertiserAccess(req, campaign.advertiser_id);
+  return { ...scope, advertiserId: campaign.advertiser_id };
+}
+
+export async function requireCampaignWrite(
+  req: NextRequest,
+  campaignId: string
+): Promise<{ ok: boolean; actor: string | null; reason?: string; advertiserId?: string }> {
+  const campaign = await getCampaignById(campaignId);
+  if (!campaign) return { ok: false, actor: null, reason: "campaign not found" };
+  const scope = await requireAdvertiserWrite(req, campaign.advertiser_id);
+  return { ...scope, advertiserId: campaign.advertiser_id };
 }

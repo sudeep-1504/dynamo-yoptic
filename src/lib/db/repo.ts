@@ -45,29 +45,36 @@ export async function getAllCampaigns(): Promise<CampaignConfig[]> {
   return (data as any[]).map(toCampaignConfig);
 }
 
-// One tenant's campaign, for a client-scoped dashboard view. Assumes one
-// campaign per advertiser (true for the CoolSip MVP; a picker can be added
-// per-advertiser later without changing this shape).
-export async function getCampaignByAdvertiserId(
-  advertiserId: string
-): Promise<CampaignConfig | null> {
+// One campaign, looked up directly by id — the actual scoping unit for a
+// dashboard now that a client can run more than one campaign.
+export async function getCampaignById(campaignId: string): Promise<CampaignConfig | null> {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from("campaigns")
     .select("id, name, dwell_minutes, advertiser_id, advertisers(name)")
-    .eq("advertiser_id", advertiserId)
-    .order("created_at", { ascending: true })
-    .limit(1)
+    .eq("id", campaignId)
     .maybeSingle();
   if (error) throw error;
   return data ? toCampaignConfig(data) : null;
 }
 
+// Every campaign a tenant runs — the "campaign picker" a client lands on
+// after picking (or being scoped to) an advertiser.
+export async function listCampaignsForAdvertiser(advertiserId: string): Promise<CampaignConfig[]> {
+  const db = supabaseAdmin();
+  const { data, error } = await db
+    .from("campaigns")
+    .select("id, name, dwell_minutes, advertiser_id, advertisers(name)")
+    .eq("advertiser_id", advertiserId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data as any[]).map(toCampaignConfig);
+}
+
 export interface AdvertiserSummary {
   advertiser_id: string;
   advertiser_name: string;
-  campaign_id: string | null;
-  campaign_name: string | null;
+  campaign_count: number;
 }
 
 // For the internal "Clients" picker — one card per tenant.
@@ -75,15 +82,137 @@ export async function listAdvertisers(): Promise<AdvertiserSummary[]> {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from("advertisers")
-    .select("id, name, campaigns(id, name)")
+    .select("id, name, campaigns(id)")
     .order("name");
   if (error) throw error;
   return (data as any[]).map((a) => ({
     advertiser_id: a.id,
     advertiser_name: a.name,
-    campaign_id: a.campaigns?.[0]?.id ?? null,
-    campaign_name: a.campaigns?.[0]?.name ?? null,
+    campaign_count: a.campaigns?.length ?? 0,
   }));
+}
+
+// Onboard a brand-new tenant. Internal-admin action (see /api/admin/campaigns).
+export async function createAdvertiser(name: string): Promise<{ id: string; name: string }> {
+  const db = supabaseAdmin();
+  const { data, error } = await db.from("advertisers").insert({ name }).select("id, name").single();
+  if (error) throw error;
+  return data;
+}
+
+// A new campaign under an existing (or just-created) advertiser. Empty of
+// creatives/bindings/line_items until seedCampaignRules populates it.
+export async function createCampaign(
+  advertiserId: string,
+  name: string,
+  dwellMinutes = 20
+): Promise<CampaignConfig> {
+  const db = supabaseAdmin();
+  const { data, error } = await db
+    .from("campaigns")
+    .insert({ advertiser_id: advertiserId, name, dwell_minutes: dwellMinutes })
+    .select("id, name, dwell_minutes, advertiser_id, advertisers(name)")
+    .single();
+  if (error) throw error;
+  return toCampaignConfig(data);
+}
+
+export interface SeedRuleSpec {
+  creative_name: string;
+  threshold: number;
+}
+
+// Seeds the same rain > heat > default 3-tier pattern CoolSip uses (the only
+// signal types the WeatherAPI adapter currently populates), for a brand-new
+// campaign: creatives, their bindings, and one line_item per selected
+// location per creative (default starts active — the guaranteed floor,
+// PRD LOGIC-2). Rain outranks heat outranks default, matching the locked
+// CoolSip precedence (Section 5.3) — every new campaign starts from the same
+// proven ordering rather than an arbitrary one.
+export async function seedCampaignRules(
+  campaignId: string,
+  spec: {
+    rain: SeedRuleSpec | null;
+    heat: SeedRuleSpec | null;
+    defaultCreativeName: string;
+  },
+  locationIds: string[]
+): Promise<void> {
+  const db = supabaseAdmin();
+  const creativeIdsAndPriorities: { creative_id: string; priority: number }[] = [];
+
+  if (spec.rain) {
+    const { data: c, error } = await db
+      .from("creatives")
+      .insert({ campaign_id: campaignId, name: spec.rain.creative_name, role: "context" })
+      .select("id")
+      .single();
+    if (error) throw error;
+    await db.from("bindings").insert({
+      campaign_id: campaignId,
+      creative_id: c.id,
+      priority: 100,
+      trigger_type: "weather.precip",
+      predicate: {
+        type: "comparison",
+        signal_type: "weather.precip",
+        field: "precip_now",
+        op: ">",
+        value: spec.rain.threshold,
+      },
+    });
+    creativeIdsAndPriorities.push({ creative_id: c.id, priority: 100 });
+  }
+
+  if (spec.heat) {
+    const { data: c, error } = await db
+      .from("creatives")
+      .insert({ campaign_id: campaignId, name: spec.heat.creative_name, role: "context" })
+      .select("id")
+      .single();
+    if (error) throw error;
+    await db.from("bindings").insert({
+      campaign_id: campaignId,
+      creative_id: c.id,
+      priority: 50,
+      trigger_type: "weather.temp",
+      predicate: {
+        type: "comparison",
+        signal_type: "weather.temp",
+        field: "apparent_temp",
+        op: ">=",
+        value: spec.heat.threshold,
+      },
+    });
+    creativeIdsAndPriorities.push({ creative_id: c.id, priority: 50 });
+  }
+
+  const { data: defC, error: defErr } = await db
+    .from("creatives")
+    .insert({ campaign_id: campaignId, name: spec.defaultCreativeName, role: "default" })
+    .select("id")
+    .single();
+  if (defErr) throw defErr;
+  await db.from("bindings").insert({
+    campaign_id: campaignId,
+    creative_id: defC.id,
+    priority: 0,
+    trigger_type: "default",
+    predicate: { type: "always_true" },
+  });
+  creativeIdsAndPriorities.push({ creative_id: defC.id, priority: 0 });
+
+  const lineItems = locationIds.flatMap((locationId) =>
+    creativeIdsAndPriorities.map(({ creative_id, priority }) => ({
+      creative_id,
+      location_id: locationId,
+      state: priority === 0 ? "active" : "paused",
+    }))
+  );
+  if (lineItems.length > 0) {
+    const { error: liErr } = await db.from("line_items").insert(lineItems);
+    if (liErr) throw liErr;
+  }
 }
 
 export async function getLocations(): Promise<LocationRow[]> {
